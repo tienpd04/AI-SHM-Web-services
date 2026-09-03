@@ -1,0 +1,9 @@
+.env
+.env.local
+.vscode
+__pycache__
+logs/
+weights/
+images/
+local_logs/
+tests/
