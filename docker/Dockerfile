@@ -3,10 +3,16 @@ FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
+RUN apt-get update
+
+# RUN apt-get install -y procps # Using for test worker crash
+
 # Install system packages
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+RUN apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
+
+
+
 
 # Create application user
 RUN groupadd --system appuser \

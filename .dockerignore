@@ -1,6 +1,8 @@
 .git
+.vscode
 .gitignore
 .env
+.env.local
 __pycache__
 *.pyc
 *.pyo
@@ -11,4 +13,7 @@ venv
 logs/*
 local_logs/
 docker/
+tests/
+images/
+scripts/local-entrypoint.sh
 docker-compose.yml

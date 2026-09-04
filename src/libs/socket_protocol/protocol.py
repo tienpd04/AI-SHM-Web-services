@@ -57,7 +57,7 @@ del os
 
 if _using_header_key:
     # To ensure that both the client and the server use this protocol. The default is ON.
-    # Setup 'SOCKET_PROTOCOL_HEADER_KEY' environment is make more secure.
+    # Setup 'SOCKET_PROTOCOL_HEADER_KEY' environment (on both the client and server sides) is make more secure.
 
     # NOTE:
     #   - The server using content length and running in loop to receive enough.
@@ -133,7 +133,7 @@ else:
 
     def unpack_response_header(buff: bytes) -> Tuple[int, int, int]:
         if len(buff) < 8:
-            raise NotEnoughHeaderSize(f"\'buff\' required at least 8 number of bytes")
+            raise NotEnoughHeaderSize("'buff' required at least 8 number of bytes")
 
         status_code = int.from_bytes(buff[:2],'little')
         content_type = int.from_bytes(buff[2:4],'little')

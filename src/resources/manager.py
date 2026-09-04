@@ -34,7 +34,7 @@ def _module_get_rs_api_key():
         _rs_api_key = api_key
     else:
         logger.warning(
-            f"Enviroment 'RESOURCES_API_KEY' is not set up or set up it after import module {__name__}.")
+            "Enviroment 'RESOURCES_API_KEY' is not set up or set up it after import module '%s'.", __name__)
 
 
 _module_get_rs_api_key()
@@ -147,6 +147,7 @@ class ResourcesManager:
                     break
             if replace_pid is not None:
                 ret = self._in_use.pop(replace_pid)
+                self._taken_at.pop(replace_pid, None)
                 logger.warning(
                     "Taked resouces for worker PID %d from died worker PID %d, resources: %s", worker_pid, replace_pid, ret)
                 self._in_use[worker_pid] = ret
@@ -160,3 +161,9 @@ class ResourcesManager:
 
     def get_last_replaced_pids(self):
         return list(self._replaced_pids)
+
+    def inuse(self):
+        return self._in_use.copy()
+
+    def taken_at(self):
+        return self._taken_at.copy()

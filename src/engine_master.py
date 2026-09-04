@@ -77,7 +77,7 @@ def engine_target(ready_event=None):
             # Parent process
             worker_pid = pid
             try:
-                child_pid, status = os.wait()
+                child_pid, status = os.waitpid(worker_pid, 0)
                 if os.WIFEXITED(status):
                     # Normal exit
                     exit_code = os.WEXITSTATUS(status)
@@ -87,18 +87,25 @@ def engine_target(ready_event=None):
                     else:
                         logger.error(
                             "Engine worker %d exited with code %d", child_pid, exit_code)
-                    worker_pid = -1
                     break
                 elif os.WIFSIGNALED(status):
                     # Crashed by signal
                     term_signal = os.WTERMSIG(status)
                     logger.error(
                         "Engine worker %d terminated by signal %d", child_pid, term_signal)
-                    worker_pid = -1
                     # Going to create new worker
                     continue
+                else:
+                    # Never in this case, but it is ok to handle
+                    break
             except (KeyboardInterrupt, SystemExit):
                 break
+            except Exception:
+                # Never in this case, but it is ok to handle
+                import traceback
+                logger.error(traceback.format_exc())
+                break
+        break
 
     try:
         os.kill(worker_pid, signal.SIGTERM)

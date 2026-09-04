@@ -1,13 +1,8 @@
 
 import logging
 import os
-import signal
 import socket
-import sys
 
-
-def _worker_signal_handler(signum, frame):
-    sys.exit(0)
 
 def _create_engine():
     from src.engine.core.engine import Engine
@@ -51,12 +46,9 @@ def _create_app(engine):
     return app
 
 
-
 def start_server_worker(server_socket: socket.socket, ready_event=None) -> None:
     """Start a simple server worker that listens on a Unix domain socket."""
 
-    signal.signal(signal.Signals.SIGINT, _worker_signal_handler)
-    signal.signal(signal.Signals.SIGTERM, _worker_signal_handler)
     pid = os.getpid()
 
     # The engine logger has been set up on master.

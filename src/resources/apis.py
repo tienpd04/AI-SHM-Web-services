@@ -18,7 +18,7 @@ class _LogInterval:
         self.lasttime = 0
 
 
-_replaced_log_interval = _LogInterval()
+_log_interval = _LogInterval()
 
 
 def health_check(req: Request):
@@ -28,13 +28,18 @@ def health_check(req: Request):
     manager = cast(ResourcesManager, getattr(
         cast(SocketApplicaltion, req.app).state, 'manager'))
     now = time.time()
-    if now > _replaced_log_interval.lasttime + 3600:
+    if now > _log_interval.lasttime + 3600:
+        inuse = manager.inuse()
+        taken_at = manager.taken_at()
+        taken_at_format = {k: v.isoformat() for k, v in taken_at.items()}
         replace_pids = manager.get_last_replaced_pids()
         log_replaces = [
-            k for k, v in replace_pids if v + 7 * 24 * 60 * 60 < now]
+            k for k, v in replace_pids if v + 30 * 24 * 60 * 60 < now]
+        logger.info("[Interval Log] [Resources Manager] In use: %s", inuse)
+        logger.info("[Interval Log] [Resources Manager] Taken at: %s", taken_at_format)
         logger.info(
-            "The health check last week reused resources from dead worker processes: %s", log_replaces)
-        _replaced_log_interval.lasttime = now
+            "[Interval Log] [Resources Manager] Last 30 days reused resources from terminated worker processes: %s", log_replaces)
+        _log_interval.lasttime = now
     return Response()
 
 
@@ -64,7 +69,7 @@ def take_resources(req: Request) -> ASCIIJsonResponse:
         return ASCIIPlainTextResponse("Required content as a dict", 422)
 
     api_key = data.get('api_key')
-    if not isinstance(api_key, (str, type(None))):
+    if not isinstance(api_key, str | None):
         return ASCIIPlainTextResponse("'api_key' must be a string or None", 422)
 
     worker_pid = data.get("worker_pid")
@@ -79,7 +84,7 @@ def take_resources(req: Request) -> ASCIIJsonResponse:
         resources = manager.take_forever(api_key, worker_pid)
 
     except InvalidApiKey:
-        return ASCIIPlainTextResponse(f"Permission denied", 403)
+        return ASCIIPlainTextResponse(f"Invalid api key", 403)
 
     except InvalidWorkerPID:
         return ASCIIPlainTextResponse(f"'worker_pid' {worker_pid} is not running", 403)
@@ -91,5 +96,5 @@ def take_resources(req: Request) -> ASCIIJsonResponse:
     if resources is None:
         return ASCIIPlainTextResponse("No available resouces", 400)
 
-    resources = list(resources)
+    logger.info("Worker PID %d taken resources: %s", worker_pid, resources)
     return ASCIIJsonResponse(resources)
