@@ -2,6 +2,7 @@
 import logging
 import socket
 import struct
+import time
 import traceback
 from socket import SocketType
 from typing import Any, Callable, Dict, NoReturn, TypeAlias
@@ -163,14 +164,33 @@ class SocketApplicaltion:
         # NOTE: server_socket must be binded and listesning before run the application
         server_socket: socket.socket,
         raise_exception: bool = False,
-        log_traceback=True
+        log_traceback=True,
+        stop_after_consecutive_accept_error = 10,
     ) -> NoReturn:
 
         logger = self._logger
         handle = self._handle
+        accept_error = 0
         while True:
             try:
-                conn, address = server_socket.accept()
+                try:
+                    conn, address = server_socket.accept()
+                except Exception:
+                    accept_error += 1
+                    if accept_error >= stop_after_consecutive_accept_error:
+                        break
+                    else:
+                        if logger is not None:
+                            if log_traceback:
+                                logger.error(
+                                    "Exception from Socket Application:\n%s", traceback.format_exc())
+                            else:
+                                logger.error(
+                                    "Exception from Socket Application: %s", str(e))
+                        time.sleep(0.1)
+                        continue
+                else:
+                    accept_error = 0
                 try:
                     handle(conn, address)
                 except socket.timeout:

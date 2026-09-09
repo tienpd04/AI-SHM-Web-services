@@ -21,6 +21,19 @@ from src.web.core.logging import logger
 from .resources import get_input_shm, get_output_shm
 
 
+def engine_health_check(raise_exp=True, timeout=10) -> bool:
+    try:
+        res = request(ADDRESS, SocketAPI.HEALTH_CHECK,
+                      address_family=SOCKET_FAMILY, socket_kind=SOCKET_KIND, timeout=timeout)
+        res.raise_for_status()
+    except Exception:
+        if raise_exp:
+            raise
+        return False
+
+    return True
+
+
 class _EnigneTaskCounter:
     __slots__ = ('_shm', '_file')
     _shm: int
@@ -53,19 +66,6 @@ class _EnigneTaskCounter:
 _task_counter = _EnigneTaskCounter()
 
 
-def engine_health_check(raise_exp=True, timeout=10) -> bool:
-    try:
-        res = request(ADDRESS, SocketAPI.HEALTH_CHECK,
-                      address_family=SOCKET_FAMILY, socket_kind=SOCKET_KIND, timeout=timeout)
-        res.raise_for_status()
-    except Exception:
-        if raise_exp:
-            raise
-        return False
-
-    return True
-
-
 def _load_ouputs_from_file(filepath):
     try:
         with open(filepath, 'rb') as f:
@@ -94,7 +94,6 @@ def _load_outputs(response_dict: dict, output_shm: SharedMemory) -> list[NDArray
             buf = output_shm.buf if tensor_schema.buf_from == 0 else output_shm.buf[
                 tensor_schema.buf_from:]
             output_tensor = np.ndarray(
-                # May be does not need to copy
                 shape=tensor_schema.shape, dtype=tensor_schema.dtype, buffer=buf).copy()
             list_outputs.append(output_tensor)
 
