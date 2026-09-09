@@ -58,9 +58,10 @@ STORAGE_DIR: str = _getenv("STORAGE_DIR", "/tmp/storage")
 
 ENGINE_UNIX_SOCKET_PATH: str = _getenv("ENGINE_UNIX_SOCKET_PATH", default="/tmp/ai-engine.sock", required=True)
 
-RESOURCE_SHM_INPUT_SIZE_MB: int = _getenv("RESOURCE_SHM_INPUT_SIZE_MB", 32, cast=int)
+RESOURCE_SHM_SIZE_MB: int = _getenv("RESOURCE_SHM_SIZE_MB", 32, cast=int)
 
-RESOURCE_SHM_OUTPUT_SIZE_MB: int = _getenv("RESOURCE_SHM_OUTPUT_SIZE_MB", 32, cast=int)
+RESOURCE_REUSE_AFTER_TIMEOUT_ENOUGH: float = _getenv("RESOURCE_REUSE_AFTER_TIMEOUT_ENOUGH", 3600.0, cast=float)
+
 
 RESOURCES_UNIX_SOCKET_PATH: str = _getenv("RESOURCES_UNIX_SOCKET_PATH", default="/tmp/ai-resources.sock", required=True)
 

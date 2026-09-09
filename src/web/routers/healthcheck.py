@@ -5,7 +5,6 @@ from fastapi.responses import JSONResponse
 
 from src.web.core.logging import rq_log_error, rq_log_info
 from src.web.services.engine import engine_health_check
-from src.web.services.resources import rs_health_check
 
 router = APIRouter()
 
@@ -19,13 +18,6 @@ async def health_check(request: Request):
         # print(traceback.format_exc())
         errors["engine"] = str(e)
         rq_log_error(request, f'Engine health check failed: {e}')
-
-    try:
-        rs_health_check()
-    except Exception as e:
-        # print(traceback.format_exc())
-        errors["resources"] = str(e)
-        rq_log_error(request, f'Resources health check failed: {e}')
 
     t2 = time.perf_counter()
 

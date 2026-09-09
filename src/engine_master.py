@@ -59,11 +59,7 @@ def engine_target(ready_event=None):
     server_socket.listen(128)
     logger.info("Listening at: %s", str(address))
 
-    # NOTE:
     # Use only one worker process for the engine.
-    # Do not use multiple engine workers because:
-    # - Multiple workers do not make the engine run faster; they can make it slower than a single worker.
-    # - The fixed output SHM (Shared Memory) can be overwritten if the client request times out.
     worker_pid = -1
 
     while True:
@@ -93,15 +89,15 @@ def engine_target(ready_event=None):
                     term_signal = os.WTERMSIG(status)
                     logger.error(
                         "Engine worker %d terminated by signal %d", child_pid, term_signal)
-                    # Going to create new worker
+                    # Going to create new worker to replace it.
                     continue
                 else:
-                    # Never in this case, but it is ok to handle
+                    # May be never in this case, but it is ok to handle
                     break
             except (KeyboardInterrupt, SystemExit):
                 break
             except Exception:
-                # Never in this case, but it is ok to handle
+                # May be never in this case, but it is ok to handle
                 import traceback
                 logger.error(traceback.format_exc())
                 break
