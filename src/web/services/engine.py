@@ -149,6 +149,9 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = None) -> 
     input_shm = get_input_shm()
     output_shm = get_output_shm()
 
+    # The engine currently operates with a single processing thread (worker).
+    # Consequently, the input or output shared memory (SHM) will not be overwritten in the event of an error or timeout.
+
     if input_shm is None or input_shm.size < input_tensor.nbytes:
         logger.warning(
             "Failed to acquire shared memory with size %d, try request to engine with 'file' mode", input_tensor.nbytes)
