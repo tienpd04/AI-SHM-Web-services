@@ -10,18 +10,11 @@ from multiprocessing.shared_memory import SharedMemory
 def _web_process():
     from src.web_master import web_target
     web_target()
-    # from src.web_master import dummy_crash_web_workers
-    # dummy_crash_web_workers()
 
 
 def _engine_process(ready_event=None):
     from src.engine_master import engine_target
     engine_target(ready_event=ready_event)
-
-
-def _resources_process(resources: list[tuple[str, str]], ready_event=None):
-    from src.resources_master import resources_target
-    resources_target(resources=resources, ready_event=ready_event)
 
 
 _logger = None
