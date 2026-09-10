@@ -1,5 +1,6 @@
 import os
 import sys
+import secrets
 from multiprocessing.shared_memory import SharedMemory
 
 # Do not import the implemented module (or any objects from the implementation) as global variables.
@@ -52,26 +53,23 @@ def _setup_logging():
     return logger
 
 
-def _create_resources() -> tuple[list[SharedMemory], list[tuple[str, str]]]:
+def _create_resources() -> tuple[list[SharedMemory], set[str]]:
 
-    from src.config.settings import (NUM_WORKERS, RESOURCE_SHM_INPUT_SIZE_MB,
-                                     RESOURCE_SHM_OUTPUT_SIZE_MB)
+    from src.config.settings import (NUM_WORKERS, RESOURCE_SHM_SIZE_MB, RESOURCE_REUSE_AFTER_TIMEOUT_ENOUGH)
     _logger.info("Creating shared resources using beween processes")
 
     shm_list: list[SharedMemory] = []
-    io_names: list[tuple[str, str]] = []
-    NUM_IO_PAIR = NUM_WORKERS + 1  # Backup 1 (input, ouput)
-    for i in range(NUM_IO_PAIR):
-        input_shm = SharedMemory(
-            name=f"Shm_I_{i + 1:02d}", create=True, size=RESOURCE_SHM_INPUT_SIZE_MB * 1024 * 1024)
-        output_shm = SharedMemory(
-            name=f"Shm_O_{i + 1:02d}", create=True, size=RESOURCE_SHM_OUTPUT_SIZE_MB * 1024 * 1024)
-        shm_list.append(input_shm)
-        shm_list.append(output_shm)
-        io_names.append((input_shm.name, output_shm.name))
+    names: set[str] = set()
+    NUMBER_OF_SHM = NUM_WORKERS + 1  # Backup 1
+    size=RESOURCE_SHM_SIZE_MB * 1024 * 1024
+    for i in range(NUMBER_OF_SHM):
+        shm = SharedMemory(
+            name=f"Shm_{i + 1:02d}", create=True, size=size)
+        shm_list.append(shm)
+        names.add(shm.name)
 
     _logger.info("Created shared resources: %s", shm_list)
-    return shm_list, io_names
+    return shm_list, names, size, RESOURCE_REUSE_AFTER_TIMEOUT_ENOUGH
 
 
 def _cleanup_resources(shm_list: list[SharedMemory]):
@@ -98,60 +96,20 @@ def _load_env():
         dotenv.load_dotenv(env_file)
 
 
-def _set_rs_api_key():
-    import secrets
-    os.environ["RESOURCES_API_KEY"] = secrets.token_hex(16)
-
-
 def main():
 
     _load_env()
 
-    _set_rs_api_key()
-
     global _logger
     _logger = _setup_logging()
 
-    shm_list, io_names = _create_resources()
+    shm_list, names, size, reuse_after_timeout = _create_resources()
+    initial_key = secrets.token_hex(16)
+    from src import resources_manager
+    # Initial a module to manager resource
+    resources_manager.initialize(names=names, size=size, reuse_after_timeout_enough=reuse_after_timeout, initial_key=initial_key)
 
     from multiprocessing import Event, Process
-
-    _logger.info("Starting Resources, Engine and Web Application")
-
-    _logger.info("Starting Resources Application")
-
-    rs_ready_event = Event()
-    resources_p = Process(target=_resources_process,
-                          args=(io_names, rs_ready_event))
-    resources_p.start()
-
-    rs_start_success = True
-
-    # Wait for the resources process to signal that it's ready
-    # Wait interval 5 seconds for quick exit if resources failed to start.
-    for _ in range(6):
-        if not rs_ready_event.wait(timeout=5):
-            if not resources_p.is_alive():
-                rs_start_success = False
-                break
-        else:
-            break
-
-    if not rs_ready_event.is_set() and resources_p.is_alive():
-        # Timeout 30 seconds
-        _logger.error(
-            "Resources process taking too long time for ready, going to terminate it.")
-        resources_p.terminate()
-        resources_p.join()
-        rs_start_success = False
-
-    if not rs_start_success:
-        _logger.error("Resources process failed to start.")
-        _cleanup_resources(shm_list)
-        sys.exit(1)
-
-    _logger.info("Resources process start success with PID: %d",
-                 resources_p.pid)
 
     _logger.info("Starting Engine Application")
     engine_ready_event = Event()
@@ -179,8 +137,6 @@ def main():
 
     if not engine_start_success:
         _logger.error("Engine process failed to start.")
-        resources_p.terminate()
-        resources_p.join()
         _cleanup_resources(shm_list)
         sys.exit(1)
 
@@ -205,12 +161,10 @@ def main():
     engine_p.terminate()
     engine_p.join()
 
-    _logger.info("Terminate Resources Application")
-    resources_p.terminate()
-    resources_p.join()
 
     _logger.info("Cleanup shared resources")
     _cleanup_resources(shm_list)
+    resources_manager.cleanup(initial_key=initial_key)
     _logger.info("Program terminated successfully.")
 
 
