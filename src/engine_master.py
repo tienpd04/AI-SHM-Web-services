@@ -96,12 +96,12 @@ def engine_target(ready_event=None):
                     # Going to create new worker
                     continue
                 else:
-                    # Never in this case, but it is ok to handle
+                    # May be never in this case, but it is ok to handle
                     break
             except (KeyboardInterrupt, SystemExit):
                 break
             except Exception:
-                # Never in this case, but it is ok to handle
+                # May be never in this case, but it is ok to handle
                 import traceback
                 logger.error(traceback.format_exc())
                 break
