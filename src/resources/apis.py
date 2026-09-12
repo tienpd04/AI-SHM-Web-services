@@ -8,6 +8,7 @@ from src.libs.socket_protocol.server import (ASCIIJsonResponse,
 
 from .logger import logger
 from .manager import InvalidApiKey, InvalidWorkerPID, ResourcesManager
+from src.config.settings import RESOURCES_MANAGER_LOG_INTERVAL
 
 
 class _LogInterval:
@@ -28,17 +29,16 @@ def health_check(req: Request):
     manager = cast(ResourcesManager, getattr(
         cast(SocketApplicaltion, req.app).state, 'manager'))
     now = time.time()
-    if now > _log_interval.lasttime + 3600:
+    if now > _log_interval.lasttime + RESOURCES_MANAGER_LOG_INTERVAL:
         inuse = manager.inuse()
         taken_at = manager.taken_at()
         taken_at_format = {k: v.isoformat() for k, v in taken_at.items()}
         replace_pids = manager.get_last_replaced_pids()
-        log_replaces = [
-            k for k, v in replace_pids if v + 30 * 24 * 60 * 60 < now]
+        log_replaces = [(k, v.isoformat()) for k, v in replace_pids]
         logger.info("[Interval Log] [Resources Manager] In use: %s", inuse)
         logger.info("[Interval Log] [Resources Manager] Taken at: %s", taken_at_format)
         logger.info(
-            "[Interval Log] [Resources Manager] Last 30 days reused resources from terminated worker processes: %s", log_replaces)
+            "[Interval Log] [Resources Manager] Last reused from terminated worker processes: %s", log_replaces)
         _log_interval.lasttime = now
     return Response()
 

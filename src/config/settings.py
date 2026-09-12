@@ -66,6 +66,8 @@ RESOURCE_SHM_OUTPUT_SIZE_MB: int = _getenv("RESOURCE_SHM_OUTPUT_SIZE_MB", 32, ca
 
 RESOURCES_UNIX_SOCKET_PATH: str = _getenv("RESOURCES_UNIX_SOCKET_PATH", default="/tmp/ai-resources.sock", required=True)
 
+RESOURCES_MANAGER_LOG_INTERVAL: int = _getenv("RESOURCES_MANAGER_LOG_INTERVAL", 3600, cast=int)
+
 
 ARC_FACE_MODEL_PATH: str = _getenv('ARC_FACE_MODEL_PATH', "weights/face_extraction.bin")
 

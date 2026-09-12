@@ -71,7 +71,7 @@ class ResourcesManager:
 
     _num_workers: int
 
-    _replaced_pids: deque[tuple[int, float]]
+    _replaced_pids: deque[tuple[int, Datetime]]
 
     def __init__(self, resources: list[tuple[str, str]], num_workers: int, replaced_pids_maxlen: int = 256):
 
@@ -149,10 +149,11 @@ class ResourcesManager:
                 ret = self._in_use.pop(replace_pid)
                 self._taken_at.pop(replace_pid, None)
                 logger.warning(
-                    "Taked resouces for worker PID %d from died worker PID %d, resources: %s", worker_pid, replace_pid, ret)
+                    "Taked resouces for worker PID %d from terminated worker PID %d, resources: %s", worker_pid, replace_pid, ret)
                 self._in_use[worker_pid] = ret
-                self._taken_at[worker_pid] = Datetime.now()
-                self._replaced_pids.append((replace_pid, time.time()))
+                now = Datetime.now()
+                self._taken_at[worker_pid] = now
+                self._replaced_pids.append((replace_pid, now))
 
                 return ret
             logger.warning(
