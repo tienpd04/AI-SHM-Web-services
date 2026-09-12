@@ -12,7 +12,7 @@ class _EnvironmentSettingError(EnvironmentError):
     pass
 
 
-def _getenv(key: str, default=None, strip=True, required=False, cast: _Type = None) -> str | int | None:
+def _getenv(key: str, default=None, strip=True, required=False, cast: _Type = None) -> str | int | bool | float | None:
     v = _os.getenv(key, default)
     if strip and isinstance(v, str):
         v = v.strip()
@@ -32,6 +32,8 @@ def _getenv(key: str, default=None, strip=True, required=False, cast: _Type = No
     return v
 
 LOGS_DIR: str = _getenv("LOGS_DIR", "logs")
+
+NUM_LOG_BACKUP: int = _getenv("NUM_LOG_BACKUP", 10, cast=int)
 
 HOST: str = _getenv("HOST", "0.0.0.0")
 
@@ -61,9 +63,6 @@ ENGINE_UNIX_SOCKET_PATH: str = _getenv("ENGINE_UNIX_SOCKET_PATH", default="/tmp/
 RESOURCE_SHM_SIZE_MB: int = _getenv("RESOURCE_SHM_SIZE_MB", 32, cast=int)
 
 RESOURCE_REUSE_AFTER_TIMEOUT_ENOUGH: float = _getenv("RESOURCE_REUSE_AFTER_TIMEOUT_ENOUGH", 3600.0, cast=float)
-
-
-RESOURCES_UNIX_SOCKET_PATH: str = _getenv("RESOURCES_UNIX_SOCKET_PATH", default="/tmp/ai-resources.sock", required=True)
 
 
 ARC_FACE_MODEL_PATH: str = _getenv('ARC_FACE_MODEL_PATH', "weights/face_extraction.bin")

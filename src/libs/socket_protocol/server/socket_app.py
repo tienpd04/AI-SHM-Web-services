@@ -176,21 +176,23 @@ class SocketApplicaltion:
                 try:
                     conn, address = server_socket.accept()
                 except Exception:
+                    # Never in this case if the server_socket is binded and listesning
+                    if logger is not None:
+                        if log_traceback:
+                            logger.error(
+                                "Failed to accept connection from server_socket:\n%s", traceback.format_exc())
+                        else:
+                            logger.error(
+                                "Failed to accept connection from server_socket: %s", str(e))
                     accept_error += 1
                     if accept_error >= stop_after_consecutive_accept_error:
                         break
                     else:
-                        if logger is not None:
-                            if log_traceback:
-                                logger.error(
-                                    "Exception from Socket Application:\n%s", traceback.format_exc())
-                            else:
-                                logger.error(
-                                    "Exception from Socket Application: %s", str(e))
                         time.sleep(0.1)
                         continue
                 else:
                     accept_error = 0
+
                 try:
                     handle(conn, address)
                 except socket.timeout:
@@ -251,11 +253,13 @@ class SocketApplicaltion:
             conn.sendall(res.data)
             return None
 
-        content = data[REQUEST_HEADER_SIZE:]
-        remaining_len = content_len - len(content)
-
+        remaining_len = content_len - (len(data) - REQUEST_HEADER_SIZE)
         if remaining_len > 0:
-            content += _recv_enough(conn, remaining_len)
+            remaining_content = _recv_enough(
+                conn, remaining_len)
+            content = data[REQUEST_HEADER_SIZE:] + remaining_content
+        else:
+            content = data[REQUEST_HEADER_SIZE:]
 
         if len(content) != content_len:
             res = ASCIIPlainTextResponse(

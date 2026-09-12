@@ -19,9 +19,9 @@ def _setup_socket_app_logger():
     formatter = logging.Formatter(
         '[%(asctime)s] [%(name)s] [%(process)d] [%(levelname)s] %(message)s')
 
-    from src.config.settings import LOGS_DIR
+    from src.config.settings import LOGS_DIR, NUM_LOG_BACKUP
     file_handler = TimedRotatingFileHandler(
-        os.path.join(LOGS_DIR,'engine-socketapp.log'), when='MIDNIGHT', backupCount=5)
+        os.path.join(LOGS_DIR,'engine-socketapp.log'), when='MIDNIGHT', backupCount=NUM_LOG_BACKUP)
     file_handler.setLevel(log_level)
     file_handler.setFormatter(formatter)
     app_logger.addHandler(file_handler)

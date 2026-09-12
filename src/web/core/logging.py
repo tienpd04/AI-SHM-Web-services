@@ -26,9 +26,9 @@ def setup_logging():
 
     from logging.handlers import TimedRotatingFileHandler
 
-    from src.config.settings import LOGS_DIR
+    from src.config.settings import LOGS_DIR, NUM_LOG_BACKUP
     file_handler = TimedRotatingFileHandler(
-        os.path.join(LOGS_DIR, "fastapi.log"), when="MIDNIGHT", backupCount=5)
+        os.path.join(LOGS_DIR, "fastapi.log"), when="MIDNIGHT", backupCount=NUM_LOG_BACKUP)
     file_handler.setLevel(log_level)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)

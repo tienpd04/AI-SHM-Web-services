@@ -173,30 +173,35 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
             array = np.ndarray(shape=input_tensor.shape,
                                dtype=input_tensor.dtype, buffer=input_shm.buf)
             array[:] = input_tensor[:]
-            tensor_content = ShmTensorSchema(
-                shape=input_tensor.shape, dtype=input_tensor.dtype.name, shm=input_shm.name).original_dict()
-            content = {'model_name': model_name,
-                       'input_tensor': tensor_content, 'mode': 'shm', 'output_shm': output_shm.name}
+        except Exception:
+            release(shms)
+            raise
+        tensor_content = ShmTensorSchema(
+            shape=input_tensor.shape, dtype=input_tensor.dtype.name, shm=input_shm.name).original_dict()
+        content = {'model_name': model_name,
+                    'input_tensor': tensor_content, 'mode': 'shm', 'output_shm': output_shm.name}
+        # try:
+        res = request(ADDRESS, SocketAPI.INFERENCE, data=content,
+                        address_family=SOCKET_FAMILY, socket_kind=SOCKET_KIND, ensure_ascii=True, timeout=timeout)
 
-            res = request(ADDRESS, SocketAPI.INFERENCE, data=content,
-                          address_family=SOCKET_FAMILY, socket_kind=SOCKET_KIND, ensure_ascii=True, timeout=timeout)
+        try:
+            res.raise_for_status()
+            response_dict = res.json()
+            assert isinstance(
+                response_dict, dict), "Content return must be a dict"
+            outputs = _load_outputs(response_dict, output_shm)
 
-            try:
-                res.raise_for_status()
-                response_dict = res.json()
-                assert isinstance(
-                    response_dict, dict), "Content return must be a dict"
-                outputs = _load_outputs(response_dict, output_shm)
-            finally:
-                # Release the shared memory only after receiving a response from the engine.
-                # If it is released upon an error or timeout, the shared memory could be overwritten.
-                # If not released here, the shared memory will be reused after a sufficient timeout period (managed by the resources_manager module).
-                release(shms)
-            return outputs
         except StatusCodeError as e:
-            try:
-                msg = res.text
-            except Exception:
-                msg = ''
-            raise RequestException(
-                f"Request failed with status code {res.status_code}: {msg}") from e
+                    try:
+                        msg = res.text
+                    except Exception:
+                        msg = ''
+                    raise RequestException(
+                        f"Request failed with status code {res.status_code}: {msg}") from e
+        finally:
+            # Release the shared memory only after receiving a response from the engine.
+            # If it is released upon an error or timeout, the shared memory could be overwritten.
+            # If not released here, the shared memory will be reused after a sufficient timeout period (managed by the resources_manager module).
+            release(shms)
+        return outputs
+

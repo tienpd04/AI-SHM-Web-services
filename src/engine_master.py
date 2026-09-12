@@ -5,7 +5,7 @@ import sys
 
 from src.config.engine import (ENGINE_SOCKET_ADDRESS, ENGINE_SOCKET_FAMILY,
                                ENGINE_SOCKET_KIND)
-from src.config.settings import LOGS_DIR
+from src.config.settings import LOGS_DIR, NUM_LOG_BACKUP
 
 
 def _setup_logging():
@@ -23,7 +23,7 @@ def _setup_logging():
     stdout_handler.setFormatter(formatter)
     logger.addHandler(stdout_handler)
 
-    file_handler = TimedRotatingFileHandler(os.path.join(LOGS_DIR, "engine.log"), when='MIDNIGHT', backupCount=5)
+    file_handler = TimedRotatingFileHandler(os.path.join(LOGS_DIR, "engine.log"), when='MIDNIGHT', backupCount=NUM_LOG_BACKUP)
     file_handler.setLevel(log_level)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)

@@ -154,7 +154,7 @@ def request(
     socket_kind: int = socket.SOCK_STREAM,
     timeout: float = None,
     ensure_ascii: bool = False,
-    first_rcv_size: int = 1024,
+    first_rcv_size: int = 4096,
 ) -> Response:
 
     if not isinstance(api, int) or api < API_MIN or api > API_MAX:
@@ -220,3 +220,6 @@ def request(
         except ConnectionError as e:
             raise RequestConnectionError(
                 f"Connection error during the request to the socket {address}: {e}") from e
+        except FileNotFoundError as e:
+            raise RequestConnectionError(
+                f"The socket with address {address} is not found: {e}") from e
