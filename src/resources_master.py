@@ -23,8 +23,8 @@ def _setup_logging():
     stdout_handler.setFormatter(formatter)
     logger.addHandler(stdout_handler)
 
-    from src.config.settings import LOGS_DIR
-    file_handler = TimedRotatingFileHandler(os.path.join(LOGS_DIR, "resources.log"), when='MIDNIGHT', backupCount=5)
+    from src.config.settings import LOGS_DIR, NUM_LOG_BACKUP
+    file_handler = TimedRotatingFileHandler(os.path.join(LOGS_DIR, "resources.log"), when='MIDNIGHT', backupCount=NUM_LOG_BACKUP)
     file_handler.setLevel(log_level)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
@@ -45,9 +45,9 @@ def _setup_app_logger():
     formatter = logging.Formatter(
         '[%(asctime)s] [%(name)s] [%(process)d] [%(levelname)s] %(message)s')
 
-    from src.config.settings import LOGS_DIR
+    from src.config.settings import LOGS_DIR, NUM_LOG_BACKUP
 
-    file_handler = TimedRotatingFileHandler(os.path.join(LOGS_DIR, "rs-socketapp.log"), when='MIDNIGHT', backupCount=5)
+    file_handler = TimedRotatingFileHandler(os.path.join(LOGS_DIR, "rs-socketapp.log"), when='MIDNIGHT', backupCount=NUM_LOG_BACKUP)
     file_handler.setLevel(log_level)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)

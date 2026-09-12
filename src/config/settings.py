@@ -33,6 +33,8 @@ def _getenv(key: str, default=None, strip=True, required=False, cast: _Type = No
 
 LOGS_DIR: str = _getenv("LOGS_DIR", "logs")
 
+NUM_LOG_BACKUP: int = _getenv("NUM_LOG_BACKUP", 10, cast=int)
+
 HOST: str = _getenv("HOST", "0.0.0.0")
 
 PORT: int = _getenv("PORT", 8000, cast=int)
