@@ -41,6 +41,8 @@ RUN chown -R appuser:appuser /code
 
 RUN mkdir -p /code/logs && chown -R appuser:appuser /code/logs
 
+RUN mkdir -p /run/appuser && chown -R appuser:appuser /run/appuser
+
 # Entrypoint must be executable
 RUN chmod 755 /code/scripts/docker-entrypoint.sh
 

@@ -58,13 +58,13 @@ LOG_LEVEL: _Literal['error', 'warning', 'info', 'debug'] = {k: k for k in ('erro
 STORAGE_DIR: str = _getenv("STORAGE_DIR", "/tmp/storage")
 
 
-ENGINE_UNIX_SOCKET_PATH: str = _getenv("ENGINE_UNIX_SOCKET_PATH", default="/tmp/ai-engine.sock", required=True)
+ENGINE_UNIX_SOCKET_PATH: str = _getenv("ENGINE_UNIX_SOCKET_PATH", default="/run/appuser/engine.sock", required=True)
 
 RESOURCE_SHM_INPUT_SIZE_MB: int = _getenv("RESOURCE_SHM_INPUT_SIZE_MB", 32, cast=int)
 
 RESOURCE_SHM_OUTPUT_SIZE_MB: int = _getenv("RESOURCE_SHM_OUTPUT_SIZE_MB", 32, cast=int)
 
-RESOURCES_UNIX_SOCKET_PATH: str = _getenv("RESOURCES_UNIX_SOCKET_PATH", default="/tmp/ai-resources.sock", required=True)
+RESOURCES_UNIX_SOCKET_PATH: str = _getenv("RESOURCES_UNIX_SOCKET_PATH", default="/run/appuser/resources.sock", required=True)
 
 RESOURCES_MANAGER_LOG_INTERVAL: int = _getenv("RESOURCES_MANAGER_LOG_INTERVAL", 3600, cast=int)
 

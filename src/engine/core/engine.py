@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-from libs.models.onnxinference import (SingleInputOnnxInference,
+from src.libs.models.onnxinference import (SingleInputOnnxInference,
                                        SingleInputOutputOnnxInference)
 from src.config.engine import ModelName
 from src.config.settings import (ARC_FACE_MODEL_PATH, COCO_YOLO11_MODEL_PATH,
@@ -43,4 +43,4 @@ class Engine:
                 return self.ocr_model.inference(input_tensor=input_tensor)
 
             case _:
-                raise InvalidModelName(f"Model name not found: '{model_name}")
+                raise InvalidModelName(f"Model name not found: '{model_name}'")
