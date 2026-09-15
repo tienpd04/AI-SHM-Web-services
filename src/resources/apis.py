@@ -1,6 +1,7 @@
 import time
 from typing import cast
 
+from src.config.settings import RESOURCES_MANAGER_LOG_INTERVAL
 from src.libs.socket_protocol.server import (ASCIIJsonResponse,
                                              ASCIIPlainTextResponse,
                                              PlainTextResponse, Request,
@@ -8,7 +9,6 @@ from src.libs.socket_protocol.server import (ASCIIJsonResponse,
 
 from .logger import logger
 from .manager import InvalidApiKey, InvalidWorkerPID, ResourcesManager
-from src.config.settings import RESOURCES_MANAGER_LOG_INTERVAL
 
 
 class _LogInterval:
