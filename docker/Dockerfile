@@ -5,7 +5,8 @@ ENV PYTHONUNBUFFERED=1 \
 
 RUN apt-get update
 
-# RUN apt-get install -y procps # Using for test worker crash
+# Using for test worker crash
+# RUN apt-get install -y procps
 
 # Install system packages
 RUN apt-get install -y --no-install-recommends curl \
