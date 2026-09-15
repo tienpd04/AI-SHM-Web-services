@@ -1,8 +1,8 @@
 
 import logging
 import os
-import socket
 import signal
+import socket
 import sys
 
 

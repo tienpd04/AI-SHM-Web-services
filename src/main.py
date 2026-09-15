@@ -1,6 +1,6 @@
 import os
-import sys
 import secrets
+import sys
 from multiprocessing.shared_memory import SharedMemory
 
 # Do not import the implemented module (or any objects from the implementation) as global variables.
@@ -48,7 +48,9 @@ def _setup_logging():
 
 def _create_resources() -> tuple[list[SharedMemory], set[str]]:
 
-    from src.config.settings import (NUM_WORKERS, RESOURCE_SHM_SIZE_MB, RESOURCE_REUSE_AFTER_TIMEOUT_ENOUGH)
+    from src.config.settings import (NUM_WORKERS,
+                                     RESOURCE_REUSE_AFTER_TIMEOUT_ENOUGH,
+                                     RESOURCE_SHM_SIZE_MB)
     _logger.info("Creating shared resources using beween processes")
 
     shm_list: list[SharedMemory] = []
@@ -99,6 +101,7 @@ def main():
     shm_list, names, size, reuse_after_timeout = _create_resources()
     initial_key = secrets.token_hex(16)
     from src import resources_manager
+
     # Initial a module to manager resource
     resources_manager.initialize(names=names, size=size, reuse_after_timeout_enough=reuse_after_timeout, initial_key=initial_key)
 

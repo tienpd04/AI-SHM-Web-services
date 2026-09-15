@@ -1,3 +1,5 @@
+from typing import cast
+
 import cv2
 import numpy as np
 from numpy.typing import NDArray
@@ -6,7 +8,6 @@ from src.config.engine import ModelName
 
 from .engine import inference
 from .improc import letterbox
-from typing import cast
 
 
 class _CocoYolo11:
