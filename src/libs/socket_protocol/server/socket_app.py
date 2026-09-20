@@ -4,6 +4,7 @@ import socket
 import struct
 import time
 import traceback
+from enum import IntFlag
 from socket import SocketType
 from typing import Any, Callable, Dict, NoReturn, TypeAlias
 
@@ -165,7 +166,7 @@ class SocketApplicaltion:
         server_socket: socket.socket,
         raise_exception: bool = False,
         log_traceback=True,
-        stop_after_consecutive_accept_error = 10,
+        stop_after_consecutive_accept_error=10,
     ) -> NoReturn:
 
         logger = self._logger
@@ -301,3 +302,49 @@ class SocketApplicaltion:
         self._api_handlers[api] = handler
         self._api_documents[api] = (
             description or "", handler.__module__ + "." + handler.__name__, handler.__doc__ or "")
+
+
+RetAddress: TypeAlias = Any
+PermissionChecker: TypeAlias = Callable[[SocketType, RetAddress], bool]
+
+
+class PermissionFlag(IntFlag):
+    DO_NOTHING = 0
+    WARNING = 1
+    RESPONSE = 2
+
+
+DEFAULT_PERMISSION_FLAGS = PermissionFlag.WARNING | PermissionFlag.RESPONSE
+
+
+def no_check_permissions(conn: SocketType, addr: RetAddress) -> bool:
+    return True
+
+
+class PermissionSocketApplication(SocketApplicaltion):
+    def __init__(
+        self,
+        *,
+        timeout: float | int | None = 300,
+        first_rcv_size: int = 4096,
+        logger: logging.Logger | str | None = None,
+        default_response_class=JSONResponse,
+        permission_checker: PermissionChecker = no_check_permissions,
+        permission_flags=DEFAULT_PERMISSION_FLAGS
+    ):
+        super().__init__(timeout=timeout, first_rcv_size=first_rcv_size,
+                         logger=logger, default_response_class=default_response_class)
+        self._check_permission = permission_checker
+        self._perm_flags = int(permission_flags or 0)
+
+    def _handle(self, conn, address):
+        if not self._check_permission(conn, address):
+            if self._logger is not None and self._perm_flags & PermissionFlag.WARNING:
+                self._logger.warning("Premission denied from address: %s", str(
+                    address) or _get_client_info(conn))
+            if self._perm_flags & PermissionFlag.RESPONSE:
+                res = ASCIIPlainTextResponse(
+                    "Permission Denied", sp_status_code.SP_403_FORBIDDEN)
+                conn.sendall(res.data)
+            return
+        return super()._handle(conn, address)

@@ -23,9 +23,11 @@ class _ArcFace:
     def preprocess(self, img):
         img, _ = letterbox(img, new_shape=(112, 112))
         if self.rgb:
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB, dst=img)
         img = img.astype(np.float32)
-        img = (img / 255.0 - 0.5) * 2.0
+        img /= 255.0
+        img -= 0.5
+        img *= 2.0
         img = np.expand_dims(img, axis=0)
         img = np.transpose(img, (0, 3, 1, 2))
         return img

@@ -23,7 +23,7 @@ class _CocoYolo11:
 
     def preprocess(self, img):
         img, padding = letterbox(img, new_shape=(640, 640))
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB, dst=img)
         img = img.astype(np.float32)
         img /= 255.0
         img = np.expand_dims(img, axis=0)
@@ -38,14 +38,14 @@ class _CocoYolo11:
         class_score = np.max(scores, axis=1)
         class_id = np.argmax(scores, axis=1)
         keep = class_score >= self.conf_thresh
-        class_id = class_id[keep].copy()
+        class_id = class_id[keep].copy() # The indexes is not a range, copy is better
         class_score = class_score[keep].copy()
         boxes = boxes[keep].copy()
         boxes[:, 0] = boxes[:, 0] - boxes[:, 2] / 2
         boxes[:, 1] = boxes[:, 1] - boxes[:, 3] / 2
 
         idxs = cv2.dnn.NMSBoxes(boxes, class_score, self.conf_thresh, self.iou_thresh)
-        boxes = boxes[idxs].copy()
+        boxes = boxes[idxs].copy() # The indexes is not a range, copy is better
         class_id: NDArray = class_id[idxs].copy()
         class_score = class_score[idxs].copy()
 
@@ -54,6 +54,7 @@ class _CocoYolo11:
         boxes *= (max(image.shape[:2])) / 640
 
         ret = np.hstack((boxes, class_score.reshape((-1, 1)), class_id.reshape(-1, 1).astype(np.float32)))
+        print(ret.shape)
         return ret
 
 

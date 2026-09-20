@@ -18,7 +18,7 @@ from src.libs.socket_protocol.client.exceptions import (RequestException,
 from src.libs.socket_protocol.client.requests import request
 from src.web.core.logging import logger
 
-from .resources import get_input_shm, get_output_shm
+from .resources import get_input_output_shms
 
 
 def engine_health_check(raise_exp=True, timeout=10) -> bool:
@@ -141,17 +141,18 @@ def _log_engine_tasks_interval():
                     total, _task_counter.shm, _task_counter.file)
 
 
-def inference(model_name: str, input_tensor: NDArray, timeout: float = None) -> list[NDArray]:
-    """Request inferece to engine via shared memory or file
+def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> list[NDArray]:
+    """Request inference to engine via shared memory or file
+
+    NOTE:
+        Do not use this function in multi-threading. The SHM can be overwritten.
     """
 
     using_shm = False
-    input_shm = get_input_shm()
-    output_shm = get_output_shm()
+    input_shm, output_shm = get_input_output_shms()
 
     # The engine currently operates with a single processing thread (worker).
-    # Consequently, the input or output shared memory (SHM) will not be overwritten in the event of an error or timeout.
-
+    # Consequently, the output shared memory (SHM) will not be overwritten in the event of an error or timeout.
     if input_shm is None or input_shm.size < input_tensor.nbytes:
         logger.warning(
             "Failed to acquire shared memory with size %d, try request to engine with 'file' mode", input_tensor.nbytes)
@@ -175,25 +176,18 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = None) -> 
     else:
         _task_counter.increase_shm()
         _log_engine_tasks_interval()
-        try:
-            array = np.ndarray(shape=input_tensor.shape,
-                               dtype=input_tensor.dtype, buffer=input_shm.buf)
-            array[:] = input_tensor[:]
-            tensor_content = ShmTensorSchema(
-                shape=input_tensor.shape, dtype=input_tensor.dtype.name, shm=input_shm.name).original_dict()
-            content = {'model_name': model_name,
-                       'input_tensor': tensor_content, 'mode': 'shm'}
-            if output_shm is not None:
-                content['output_shm'] = output_shm.name
+        array = np.ndarray(shape=input_tensor.shape,
+                                        dtype=input_tensor.dtype, buffer=input_shm.buf)
+        array[:] = input_tensor[:]
+        tensor_content = ShmTensorSchema(
+            shape=input_tensor.shape, dtype=input_tensor.dtype.name, shm=input_shm.name).original_dict()
+        content = {'model_name': model_name,
+                'input_tensor': tensor_content, 'mode': 'shm', 'output_shm': output_shm.name}
 
-            res = request(ADDRESS, SocketAPI.INFERENCE, data=content,
-                          address_family=SOCKET_FAMILY, socket_kind=SOCKET_KIND, ensure_ascii=True, timeout=timeout)
+        res = request(ADDRESS, SocketAPI.INFERENCE, data=content,
+                    address_family=SOCKET_FAMILY, socket_kind=SOCKET_KIND, ensure_ascii=True, timeout=timeout)
+        try:
             res.raise_for_status()
-            response_dict = res.json()
-            assert isinstance(
-                response_dict, dict), "Content return must be a dict"
-            outputs = _load_outputs(response_dict, output_shm)
-            return outputs
         except StatusCodeError as e:
             try:
                 msg = res.text
@@ -201,3 +195,8 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = None) -> 
                 msg = ''
             raise RequestException(
                 f"Request failed with status code {res.status_code}: {msg}") from e
+        response_dict = res.json()
+        assert isinstance(
+            response_dict, dict), "Content return must be a dict"
+        outputs = _load_outputs(response_dict, output_shm)
+        return outputs

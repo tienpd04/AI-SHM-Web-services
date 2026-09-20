@@ -1,7 +1,6 @@
+
 import os
-import secrets
 from multiprocessing.shared_memory import SharedMemory
-from types import MappingProxyType
 
 from src.config.resources import (RESOURCES_SOCKET_ADDRESS,
                                   RESOURCES_SOCKET_FAMILY,
@@ -10,6 +9,7 @@ from src.libs.socket_protocol.client import StatusCodeError, request
 from src.web.core.logging import logger
 
 _rs_api_key = 0
+_input_output_shms: tuple[SharedMemory, SharedMemory] = ()
 
 
 def _module_get_rs_api_key():
@@ -40,29 +40,6 @@ def _get_rs_api_key():
         if not _rs_api_key:
             logger.warning("Enviroment 'RESOURCES_API_KEY' is not set up.")
     return _rs_api_key
-
-
-_input_output_shms: tuple[SharedMemory, SharedMemory] = ()
-
-
-def get_input_shm() -> SharedMemory | None:
-    if not _input_output_shms:
-        _take_resources()
-
-    if _input_output_shms:
-        return _input_output_shms[0]
-    else:
-        return None
-
-
-def get_output_shm() -> SharedMemory | None:
-    if not _input_output_shms:
-        _take_resources()
-
-    if _input_output_shms:
-        return _input_output_shms[1]
-    else:
-        return None
 
 
 def _take_resources() -> bool:
@@ -106,6 +83,16 @@ def _take_resources() -> bool:
     return True
 
 
+def get_input_output_shms() -> tuple[SharedMemory, SharedMemory] | tuple[None, None]:
+    """For use only by the engine service
+    Do not use this for other service. The Shared Memory can be overwritten.
+    Do not use this in multi-threading. The Shared Memory can be overwritten.
+    """
+    if not _input_output_shms:
+        _take_resources()
+    return _input_output_shms or (None, None)
+
+
 def rs_health_check(timeout=10, raise_exp=True):
     try:
         res = request(RESOURCES_SOCKET_ADDRESS, ResourcesSocketAPI.HEALTH_CHECK,
@@ -121,6 +108,5 @@ def rs_health_check(timeout=10, raise_exp=True):
 
 __all__ = [
     "rs_health_check",
-    "get_input_shm",
-    'get_output_shm'
+    "get_input_output_shms"
 ]

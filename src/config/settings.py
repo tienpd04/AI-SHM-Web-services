@@ -23,7 +23,7 @@ def _getenv(key: str, default=None, strip=True, required=False, cast: _Type = No
 
     if cast is not None:
         if cast == bool and isinstance(v, str):
-            return v.lower() in ('1', 'true', 'yes') # otherwise is False, no validate
+            return v.lower() in ('1', 'true', 'yes', 'on') # otherwise is False, no validate
         try:
             v = cast(v)
         except Exception:

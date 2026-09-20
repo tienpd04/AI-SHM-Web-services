@@ -10,7 +10,7 @@ services:
       - 8000:8000
     volumes:
       - .:/code:r
-      - ./logs:/code/logs:rw # run "chmod 777 ./logs" before run the docker container
+      - ./logs:/code/logs:rw # run "mkdir -p ./logs && chmod 777 ./logs" before run the docker container
     env_file:
       - .env
     deploy:

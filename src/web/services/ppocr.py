@@ -14,14 +14,16 @@ class _PPOCR_V6:
         preds = inference(ModelName.PPOCR_V6, img)
         return self.postprocess(preds)
 
-    def preprocess(self, img: NDArray):
-        height, width = img.shape[:2]
+    def preprocess(self, image: NDArray):
+        height, width = image.shape[:2]
         new_height = 48
         new_width = int((width * new_height) / height)
-        img = cv2.resize(img, dsize=(new_width, new_height))
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = cv2.resize(image, dsize=(new_width, new_height))
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB, dst=img)
         img = img.astype(np.float32)
-        img = (img / 255.0 - 0.5) * 2.0
+        img /= 255.0
+        img -= 0.5
+        img *= 2.0
         img = np.expand_dims(img, axis=0)
         img = np.transpose(img, (0, 3, 1, 2))
 
