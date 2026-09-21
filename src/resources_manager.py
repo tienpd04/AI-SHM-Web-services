@@ -56,7 +56,7 @@ class _OneSizeResourcesManager:
         last_use_times = self._load_last_use_times()
         # print(f"Before: {sorted(last_use_times, key=last_use_times.get)}")
 
-        now = time.time()
+        mono = time.monotonic()
         available = self._set_names - set(last_use_times)
         if len(available) >= len(sizes):
             ret_names = list(available)[:len(sizes)]
@@ -64,7 +64,7 @@ class _OneSizeResourcesManager:
         else:
             ret_names = list(available)
             for name, last_time in last_use_times.items():
-                if now - last_time > self._timeout:
+                if mono - last_time > self._timeout:
                     ret_names.append(name)
                     if len(ret_names) == len(sizes):
                         break
@@ -73,7 +73,7 @@ class _OneSizeResourcesManager:
             ret = []
             for name in ret_names:
                 ret.append((name, self._size))
-                last_use_times[name] = now
+                last_use_times[name] = mono
             self._store_last_use_times(last_use_times)
             # print(f"After: {sorted(last_use_times, key=last_use_times.get)}")
             return ret

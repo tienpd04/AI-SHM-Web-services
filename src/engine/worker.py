@@ -5,6 +5,10 @@ import signal
 import socket
 import sys
 
+import secrets
+
+_module_key = secrets.token_hex(8)
+del secrets
 
 def _create_engine():
     from src.engine.core.engine import Engine
@@ -51,7 +55,6 @@ def _signal_handler(signum, frame):
     sys.exit(0)
 
 def start_server_worker(server_socket: socket.socket, ready_event=None) -> None:
-
     signal.signal(signal.SIGINT, _signal_handler)
     signal.signal(signal.SIGTERM, _signal_handler)
     pid = os.getpid()
@@ -66,6 +69,8 @@ def start_server_worker(server_socket: socket.socket, ready_event=None) -> None:
     logger.info("Application startup complete.")
     logger.info("Started server process [%d]", pid)
 
+    logger.info("Check differences from the worker module. Worker PID: %d, module key: %s",
+                    pid, _module_key)
     if ready_event is not None:
         ready_event.set() # type: ignore
     try:

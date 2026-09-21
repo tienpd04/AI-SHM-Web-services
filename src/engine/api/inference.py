@@ -15,6 +15,7 @@ from src.config.engine import STORAGE_DIR, ShmTensorSchema
 from src.libs.socket_protocol.server import (ASCIIJsonResponse, JSONResponse,
                                              PlainTextResponse, Request,
                                              Response, SocketApplicaltion)
+from src.libs.misc.np_utils import ndarray_sum_hash, list_ndarray_sum_hash
 
 from ..core.engine import Engine, InvalidModelName
 from ..core.shm import get_shm
@@ -34,8 +35,10 @@ def _load_shm_input_tensor(tensor_info: dict) -> tuple[NDArray, SharedMemory]:
     shm = get_shm(tensor_schema.shm)
     buffer = shm.buf if tensor_schema.buf_from == 0 else shm.buf[tensor_schema.buf_from:]
     # Using shm buffer, no need to copy
+    # tensor = np.ndarray(shape=tensor_schema.shape,
+    #                     dtype=tensor_schema.dtype, buffer=buffer)
     tensor = np.ndarray(shape=tensor_schema.shape,
-                        dtype=tensor_schema.dtype, buffer=buffer)
+                            dtype=tensor_schema.dtype, buffer=buffer).copy()
     return tensor, shm
 
 
@@ -89,6 +92,9 @@ def inference(req: Request) -> Response:
         return PlainTextResponse(f"Could not load input tensor: {str(e)}", 422)
 
     if mode == 'shm':
+        input_hash = data.get('input_hash')
+        if ndarray_sum_hash(input_tensor).hexdigest() != input_hash:
+            return PlainTextResponse(f"Invalid input hash. The SHM may be overwritten.")
         output_shm_name = data.get('output_shm')
         if output_shm_name is not None:
             try:
@@ -124,6 +130,7 @@ def inference(req: Request) -> Response:
                 output_mode = 'file'
 
     if output_mode == 'shm':
+        outputs_hash = list_ndarray_sum_hash(outputs)
         try:
             output_schemas = _bind_ouputs(outputs=outputs, shm=output_shm)
         except Exception as e:
@@ -132,7 +139,7 @@ def inference(req: Request) -> Response:
             return PlainTextResponse("Could not bind output to shm: shm name '{}', shm size {}. Exception: {}".format(output_shm.name, output_shm.size, str(e)), 500)
 
         content = {'mode': output_mode, 'outputs': [
-            s.original_dict() for s in output_schemas]}
+            s.original_dict() for s in output_schemas], 'outputs_hash': outputs_hash.hexdigest()}
         return ASCIIJsonResponse(content)
     else:
         filepath = os.path.join(STORAGE_DIR, secrets.token_hex(16) + '.pkl')

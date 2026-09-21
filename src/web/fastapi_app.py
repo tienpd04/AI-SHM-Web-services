@@ -15,7 +15,7 @@ def _create_app():
     from src.web.middleware.request_id import SetRequestIDMiddleware
     from src.web.routers import api_router
 
-    app = FastAPI(access=False)
+    app = FastAPI()
     logger.info("Check differences from the worker module. Worker PID: %d, module key: %s",
                 os.getpid(), _module_key)
     app.add_middleware(SetRequestIDMiddleware)

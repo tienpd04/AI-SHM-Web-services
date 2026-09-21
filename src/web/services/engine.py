@@ -15,6 +15,7 @@ from src.config.engine import EngineSocketAPI as SocketAPI
 from src.config.engine import ShmTensorSchema
 from src.libs.socket_protocol.client.exceptions import (RequestException,
                                                         StatusCodeError)
+from src.libs.misc.np_utils import ndarray_sum_hash, list_ndarray_sum_hash
 from src.libs.socket_protocol.client.requests import request
 from src.web.core.logging import logger
 
@@ -84,7 +85,9 @@ def _load_outputs(response_dict: dict, output_shm: SharedMemory) -> list[NDArray
     mode = response_dict.get("mode")
     outputs: list | dict = response_dict.get("outputs")
 
+
     if mode == "shm":
+        outputs_hash_hex = response_dict.get('outputs_hash')
         list_outputs: list[NDArray] = []
         for tensor_info in outputs:
             tensor_schema = ShmTensorSchema(**tensor_info)
@@ -96,6 +99,10 @@ def _load_outputs(response_dict: dict, output_shm: SharedMemory) -> list[NDArray
             output_tensor = np.ndarray(
                 shape=tensor_schema.shape, dtype=tensor_schema.dtype, buffer=buf).copy() # Copy is required to release resources
             list_outputs.append(output_tensor)
+        confirm_hash_hex = list_ndarray_sum_hash(list_outputs).hexdigest()
+        if confirm_hash_hex != outputs_hash_hex:
+            raise RequestException(
+                                f"Invalid outputs hash, the SHM may be overwriten")
 
         return list_outputs
 
@@ -169,6 +176,7 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
         _log_engine_tasks_interval()
         input_shm = shms[0]
         output_shm = input_shm
+        input_hash = ndarray_sum_hash(input_tensor).hexdigest()
         try:
             array = np.ndarray(shape=input_tensor.shape,
                                dtype=input_tensor.dtype, buffer=input_shm.buf)
@@ -178,8 +186,9 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
             raise
         tensor_content = ShmTensorSchema(
             shape=input_tensor.shape, dtype=input_tensor.dtype.name, shm=input_shm.name).original_dict()
+
         content = {'model_name': model_name,
-                    'input_tensor': tensor_content, 'mode': 'shm', 'output_shm': output_shm.name}
+                    'input_tensor': tensor_content, 'mode': 'shm', 'output_shm': output_shm.name, 'input_hash': input_hash}
         # try:
         res = request(ADDRESS, SocketAPI.INFERENCE, data=content,
                         address_family=SOCKET_FAMILY, socket_kind=SOCKET_KIND, ensure_ascii=True, timeout=timeout)

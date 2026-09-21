@@ -60,6 +60,11 @@ STORAGE_DIR: str = _getenv("STORAGE_DIR", "/tmp/storage")
 
 ENGINE_UNIX_SOCKET_PATH: str = _getenv("ENGINE_UNIX_SOCKET_PATH", default="/run/appuser/engine.sock", required=True)
 
+ENGINE_NUM_WORKERS: int = _getenv("ENGINE_NUM_WORKERS", default=max(1, (NUM_WORKERS + 3) // 4), cast=int)
+
+if ENGINE_NUM_WORKERS >= NUM_WORKERS:
+    raise _EnvironmentSettingError(f"'ENGINE_NUM_WORKERS' must be less than 'NUM_WORKERS'. Actual settings: 'ENGINE_NUM_WORKERS'={ENGINE_NUM_WORKERS}, 'NUM_WORKERS'={NUM_WORKERS}")
+
 RESOURCE_SHM_SIZE_MB: int = _getenv("RESOURCE_SHM_SIZE_MB", 32, cast=int)
 
 RESOURCE_REUSE_AFTER_TIMEOUT_ENOUGH: float = _getenv("RESOURCE_REUSE_AFTER_TIMEOUT_ENOUGH", 3600.0, cast=float)
