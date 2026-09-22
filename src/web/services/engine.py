@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 from src.config.engine import ENGINE_SOCKET_ADDRESS as ADDRESS
 from src.config.engine import ENGINE_SOCKET_FAMILY as SOCKET_FAMILY
 from src.config.engine import ENGINE_SOCKET_KIND as SOCKET_KIND
-from src.config.engine import STORAGE_DIR
+from src.config.engine import STORAGE_DIR, SHM_HEADER_SIZE
 from src.config.engine import EngineSocketAPI as SocketAPI
 from src.config.engine import ShmTensorSchema
 from src.libs.socket_protocol.client.exceptions import (RequestException,
@@ -18,7 +18,8 @@ from src.libs.socket_protocol.client.exceptions import (RequestException,
 from src.libs.socket_protocol.client.requests import request
 from src.web.core.logging import logger
 
-from .resources import get_input_output_shms
+from .resources import get_shms
+from src.globals_signals import get_shm_lock
 
 
 def engine_health_check(raise_exp=True, timeout=10) -> bool:
@@ -85,17 +86,41 @@ def _load_outputs(response_dict: dict, output_shm: SharedMemory) -> list[NDArray
     outputs: list | dict = response_dict.get("outputs")
 
     if mode == "shm":
+        shm_nonce = response_dict.get('shm_nonce')
         list_outputs: list[NDArray] = []
+        list_schemas: list[ShmTensorSchema] = []
         for tensor_info in outputs:
             tensor_schema = ShmTensorSchema(**tensor_info)
             if tensor_schema.shm != output_shm.name:
                 raise RequestException(
                     f"Invalid output SHM name, expected: '{output_shm.name}', actual: '{tensor_schema.shm}'")
-            buf = output_shm.buf if tensor_schema.buf_from == 0 else output_shm.buf[
-                tensor_schema.buf_from:]
             output_tensor = np.ndarray(
-                shape=tensor_schema.shape, dtype=tensor_schema.dtype, buffer=buf).copy()
+                shape=tensor_schema.shape, dtype=tensor_schema.dtype)
             list_outputs.append(output_tensor)
+            list_schemas.append(tensor_schema)
+
+        lock = get_shm_lock(output_shm.name)
+
+        if lock.acquire(block=False):
+            # This scope does not create any big objects, just copies data.
+            # It is essential to ensure that no crashes occur within this scope and that the lock is successfully released.
+            try:
+                buf = output_shm.buf
+                if buf[:SHM_HEADER_SIZE].hex() != shm_nonce:
+                    raise RequestException(
+                        "Invalid output SHM header. The output SHM may be overwritten")
+                for i, output in enumerate(list_outputs):
+                    schema = list_schemas[i]
+                    shm_tensor = np.ndarray(
+                        shape=schema.shape, dtype=schema.dtype, buffer=buf[schema.buf_from:])
+                    output[:] = shm_tensor[:]
+
+            finally:
+                lock.release()
+
+        else:
+            raise RuntimeError(
+                "Too many processes or threads accessing SHM simultaneously.")
 
         return list_outputs
 
@@ -149,13 +174,16 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
     """
 
     using_shm = False
-    input_shm, output_shm = get_input_output_shms()
+    shms = get_shms()
+    input_shm = shms[0] if shms else None
+
+    output_shm = shms[1] if len(shms) > 1 else input_shm
 
     # The engine currently operates with a single processing thread (worker).
     # Consequently, the output shared memory (SHM) will not be overwritten in the event of an error or timeout.
-    if input_shm is None or input_shm.size < input_tensor.nbytes:
+    if input_shm is None or input_shm.size < input_tensor.nbytes + SHM_HEADER_SIZE:
         logger.warning(
-            "Failed to acquire shared memory with size %d, try request to engine with 'file' mode", input_tensor.nbytes)
+            "Failed to acquire shared memory with size %d, try request to engine with 'file' mode", input_tensor.nbytes + SHM_HEADER_SIZE)
     else:
         using_shm = True
 
@@ -176,13 +204,30 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
     else:
         _task_counter.increase_shm()
         _log_engine_tasks_interval()
-        array = np.ndarray(shape=input_tensor.shape,
-                                        dtype=input_tensor.dtype, buffer=input_shm.buf)
-        array[:] = input_tensor[:]
+        nonce = secrets.token_bytes(SHM_HEADER_SIZE)
+        lock = get_shm_lock(input_shm.name)
+
+        if lock.acquire(block=False):
+            # This scope does not create any big objects, just copies data.
+            # It is essential to ensure that no crashes occur within this scope and that the lock is successfully released.
+            try:
+                buf = input_shm.buf
+                buf[:SHM_HEADER_SIZE] = nonce
+                array = np.ndarray(shape=input_tensor.shape,
+                                    dtype=input_tensor.dtype, buffer=buf[SHM_HEADER_SIZE:])
+                array[:] = input_tensor[:]
+            finally:
+                lock.release()
+        else:
+            raise RuntimeError(
+                "Too many processes or threads accessing SHM simultaneously.")
+
         tensor_content = ShmTensorSchema(
-            shape=input_tensor.shape, dtype=input_tensor.dtype.name, shm=input_shm.name).original_dict()
+            shape=input_tensor.shape, dtype=input_tensor.dtype.name, shm=input_shm.name, buf_from=SHM_HEADER_SIZE).original_dict()
+
+
         content = {'model_name': model_name,
-                'input_tensor': tensor_content, 'mode': 'shm', 'output_shm': output_shm.name}
+                'input_tensor': tensor_content, 'mode': 'shm', 'output_shm': output_shm.name, 'shm_nonce': nonce.hex()}
 
         res = request(ADDRESS, SocketAPI.INFERENCE, data=content,
                     address_family=SOCKET_FAMILY, socket_kind=SOCKET_KIND, ensure_ascii=True, timeout=timeout)

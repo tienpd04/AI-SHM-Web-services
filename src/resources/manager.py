@@ -88,9 +88,8 @@ class ResourcesManager:
         for rs_set in resources:
             if not isinstance(rs_set, (tuple, list)):
                 raise ValueError("'resources' element must be tuple or list")
-            if len(rs_set) != 2:
-                raise ValueError(
-                    "'resources' element must have length = 2 (input and output)")
+            if not rs_set:
+                raise ValueError("'resources' element is empty")
             for rs in rs_set:
                 if not isinstance(rs, str):
                     raise ValueError(f"'resources' name must be a str: '{rs}'")

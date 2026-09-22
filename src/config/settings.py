@@ -60,7 +60,7 @@ STORAGE_DIR: str = _getenv("STORAGE_DIR", "/tmp/storage")
 
 ENGINE_UNIX_SOCKET_PATH: str = _getenv("ENGINE_UNIX_SOCKET_PATH", default="/run/appuser/engine.sock", required=True)
 
-RESOURCE_SHM_INPUT_SIZE_MB: int = _getenv("RESOURCE_SHM_INPUT_SIZE_MB", 32, cast=int)
+RESOURCE_SHM_SIZE_MB: int = _getenv("RESOURCE_SHM_SIZE_MB", 32, cast=int)
 
 RESOURCE_SHM_OUTPUT_SIZE_MB: int = _getenv("RESOURCE_SHM_OUTPUT_SIZE_MB", 32, cast=int)
 
@@ -68,6 +68,7 @@ RESOURCES_UNIX_SOCKET_PATH: str = _getenv("RESOURCES_UNIX_SOCKET_PATH", default=
 
 RESOURCES_MANAGER_LOG_INTERVAL: int = _getenv("RESOURCES_MANAGER_LOG_INTERVAL", 3600, cast=int)
 
+SHM_HEADER_SIZE = 16
 
 ARC_FACE_MODEL_PATH: str = _getenv('ARC_FACE_MODEL_PATH', "weights/face_extraction.bin")
 

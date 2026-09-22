@@ -18,8 +18,8 @@ def _engine_process(ready_event=None):
     engine_target(ready_event=ready_event)
 
 
-def _resources_process(resources: list[tuple[str, str]], ready_event=None):
-    from src.resources_master import resources_target
+def _resources_process(resources: list[tuple[str, ...]], ready_event=None):
+    from src.resources.target import resources_target
     resources_target(resources=resources, ready_event=ready_event)
 
 
@@ -54,24 +54,20 @@ def _setup_logging():
 
 def _create_resources() -> tuple[list[SharedMemory], list[tuple[str, str]]]:
 
-    from src.config.settings import (NUM_WORKERS, RESOURCE_SHM_INPUT_SIZE_MB,
-                                     RESOURCE_SHM_OUTPUT_SIZE_MB)
+    from src.config.settings import (NUM_WORKERS, RESOURCE_SHM_SIZE_MB, SHM_HEADER_SIZE)
     _logger.info("Creating shared resources using beween processes")
 
     shm_list: list[SharedMemory] = []
-    io_names: list[tuple[str, str]] = []
-    NUM_IO_PAIR = NUM_WORKERS + 1  # Backup 1 (input, ouput)
-    for i in range(NUM_IO_PAIR):
-        input_shm = SharedMemory(
-            name=f"Shm_I_{i + 1:02d}", create=True, size=RESOURCE_SHM_INPUT_SIZE_MB * 1024 * 1024)
-        output_shm = SharedMemory(
-            name=f"Shm_O_{i + 1:02d}", create=True, size=RESOURCE_SHM_OUTPUT_SIZE_MB * 1024 * 1024)
-        shm_list.append(input_shm)
-        shm_list.append(output_shm)
-        io_names.append((input_shm.name, output_shm.name))
+    name_tuples: list[tuple[str, str]] = []
+    NUM_SHM = NUM_WORKERS + 1  # Backup 1
+    for i in range(NUM_SHM):
+        shm = SharedMemory(
+            name=f"Shm_{i + 1:02d}", create=True, size=RESOURCE_SHM_SIZE_MB * 1024 * 1024 + SHM_HEADER_SIZE)
+        shm_list.append(shm)
+        name_tuples.append((shm.name, ))
 
     _logger.info("Created shared resources: %s", shm_list)
-    return shm_list, io_names
+    return shm_list, name_tuples
 
 
 def _cleanup_resources(shm_list: list[SharedMemory]):
@@ -112,7 +108,10 @@ def main():
     global _logger
     _logger = _setup_logging()
 
-    shm_list, io_names = _create_resources()
+    shm_list, name_tuples = _create_resources()
+
+    from src import globals_signals
+    globals_signals.initialize({shm.name for shm in shm_list})
 
     from multiprocessing import Event, Process
 
@@ -122,7 +121,7 @@ def main():
 
     rs_ready_event = Event()
     resources_p = Process(target=_resources_process,
-                          args=(io_names, rs_ready_event))
+                          args=(name_tuples, rs_ready_event))
     resources_p.start()
 
     rs_start_success = True

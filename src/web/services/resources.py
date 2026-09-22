@@ -9,7 +9,7 @@ from src.libs.socket_protocol.client import StatusCodeError, request
 from src.web.core.logging import logger
 
 _rs_api_key = 0
-_input_output_shms: tuple[SharedMemory, SharedMemory] = ()
+_shms: tuple[SharedMemory, ...] = ()
 
 
 def _module_get_rs_api_key():
@@ -43,8 +43,8 @@ def _get_rs_api_key():
 
 
 def _take_resources() -> bool:
-    global _input_output_shms
-    if _input_output_shms:
+    global _shms
+    if _shms:
         # taken
         return True
     pid = os.getpid()
@@ -58,13 +58,11 @@ def _take_resources() -> bool:
             names, list), f"Required response as a list, not {type(names)}"
         assert all([isinstance(x, str) for x in names]
                    ), f"Required each element in list is str: {names}"
+        assert len(names) > 0, "Required atleast one resource"
         assert len(
-            names) == 2, f"Required exact 2 resources, actual return: {names}"
-        assert len(
-            set(names)) == 2, f"Resources name must be unique, actual return: {names}"
-        input_shm = SharedMemory(names[0])
-        output_shm = SharedMemory(names[1])
-        _input_output_shms = (input_shm, output_shm)
+            set(names)) == len(names), f"Resources name must be unique, actual return: {names}"
+        shms = [SharedMemory(name) for name in names]
+        _shms = tuple(shms)
 
     except StatusCodeError:
         try:
@@ -79,18 +77,18 @@ def _take_resources() -> bool:
         return False
 
     logger.info("Taken resources for worker PID %d: %s",
-                pid, _input_output_shms)
+                pid, _shms)
     return True
 
 
-def get_input_output_shms() -> tuple[SharedMemory, SharedMemory] | tuple[None, None]:
+def get_shms() -> tuple[SharedMemory, ...]:
     """For use only by the engine service
     Do not use this for other service. The Shared Memory can be overwritten.
     Do not use this in multi-threading. The Shared Memory can be overwritten.
     """
-    if not _input_output_shms:
+    if not _shms:
         _take_resources()
-    return _input_output_shms or (None, None)
+    return _shms
 
 
 def rs_health_check(timeout=10, raise_exp=True):
@@ -108,5 +106,5 @@ def rs_health_check(timeout=10, raise_exp=True):
 
 __all__ = [
     "rs_health_check",
-    "get_input_output_shms"
+    "get_shms"
 ]

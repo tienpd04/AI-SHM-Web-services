@@ -166,7 +166,7 @@ class SocketApplicaltion:
         server_socket: socket.socket,
         raise_exception: bool = False,
         log_traceback=True,
-        stop_after_consecutive_accept_error=10,
+        stop_after_consecutive_accept_error=100,
     ) -> NoReturn:
 
         logger = self._logger
@@ -187,9 +187,10 @@ class SocketApplicaltion:
                                 "Failed to accept connection from server_socket: %s", str(e))
                     accept_error += 1
                     if accept_error >= stop_after_consecutive_accept_error:
-                        break
+                        import sys
+                        sys.exit(1)
                     else:
-                        time.sleep(0.1)
+                        time.sleep(1)
                         continue
                 else:
                     accept_error = 0
