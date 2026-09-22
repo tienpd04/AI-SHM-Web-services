@@ -164,9 +164,8 @@ class SocketApplicaltion:
         self,
         # NOTE: server_socket must be binded and listesning before run the application
         server_socket: socket.socket,
-        raise_exception: bool = False,
         log_traceback=True,
-        stop_after_consecutive_accept_error=10,
+        stop_after_consecutive_accept_error=100,
     ) -> NoReturn:
 
         logger = self._logger
@@ -187,9 +186,10 @@ class SocketApplicaltion:
                                 "Failed to accept connection from server_socket: %s", str(e))
                     accept_error += 1
                     if accept_error >= stop_after_consecutive_accept_error:
-                        break
+                        import sys
+                        sys.exit(1)
                     else:
-                        time.sleep(0.1)
+                        time.sleep(1)
                         continue
                 else:
                     accept_error = 0
@@ -208,16 +208,13 @@ class SocketApplicaltion:
                     conn.close()
 
             except Exception as e:
-                if raise_exception:
-                    raise
-                else:
-                    if logger is not None:
-                        if log_traceback:
-                            logger.error(
-                                "Exception from Socket Application:\n%s", traceback.format_exc())
-                        else:
-                            logger.error(
-                                "Exception from Socket Application: %s", str(e))
+                if logger is not None:
+                    if log_traceback:
+                        logger.error(
+                            "Exception from Socket Application:\n%s", traceback.format_exc())
+                    else:
+                        logger.error(
+                            "Exception from Socket Application: %s", str(e))
 
     def _prepare_request(self, conn: SocketType, address) -> Request | None:
         """Parser the header and validate
