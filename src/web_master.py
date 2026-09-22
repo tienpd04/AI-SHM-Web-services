@@ -36,10 +36,11 @@ def dummy_crash_web_workers():
 
     import time
     from multiprocessing import Event, Process
+    from multiprocessing.synchronize import Event as EventT
 
     from src.config.settings import NUM_WORKERS
 
-    def _worker(close_event):
+    def _worker(close_event: EventT):
         from src.web.services.resources import _take_resources
 
         _take_resources()
@@ -47,7 +48,7 @@ def dummy_crash_web_workers():
 
     # close_event = Event()
     wokers: list[Process] = []
-    events: list[Event] = []
+    events: list[EventT] = []
     for w in range(NUM_WORKERS):
         close_event = Event()
         worker = Process(target=_worker, args=(close_event,))
