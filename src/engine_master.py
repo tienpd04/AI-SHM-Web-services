@@ -102,10 +102,10 @@ def engine_target(ready_event=None):
                         logger.error(
                             "Engine worker %d terminated by signal %d", child_pid, term_signal)
 
-                        running_or_done_workers -= 1
-
                         worker_pids.discard(child_pid)
+
                         # Going to create new worker to replace it.
+                        running_or_done_workers -= 1
                         break
 
             except ChildProcessError:

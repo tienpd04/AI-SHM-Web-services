@@ -50,13 +50,13 @@ def _create_resources() -> tuple[list[SharedMemory], set[str]]:
 
     from src.config.settings import (NUM_WORKERS,
                                      RESOURCE_REUSE_AFTER_TIMEOUT_ENOUGH,
-                                     RESOURCE_SHM_SIZE_MB)
+                                     RESOURCE_SHM_SIZE_MB, SHM_HEADER_SIZE)
     _logger.info("Creating shared resources using beween processes")
 
     shm_list: list[SharedMemory] = []
     names: set[str] = set()
     NUMBER_OF_SHM = NUM_WORKERS + 1  # Backup 1
-    size=RESOURCE_SHM_SIZE_MB * 1024 * 1024
+    size=RESOURCE_SHM_SIZE_MB * 1024 * 1024 + SHM_HEADER_SIZE
     for i in range(NUMBER_OF_SHM):
         shm = SharedMemory(
             name=f"Shm_{i + 1:02d}", create=True, size=size)

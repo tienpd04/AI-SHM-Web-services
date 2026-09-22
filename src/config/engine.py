@@ -12,6 +12,7 @@ from typing import Final as _Final
 
 from .settings import ENGINE_UNIX_SOCKET_PATH as _ENGINE_UNIX_SOCKET_PATH
 from .settings import STORAGE_DIR as STORAGE_DIR
+from .settings import SHM_HEADER_SIZE as SHM_HEADER_SIZE
 
 ENGINE_SOCKET_ADDRESS: _Final[str] = _ENGINE_UNIX_SOCKET_PATH
 ENGINE_SOCKET_FAMILY: _Final[int] = _socket.AF_UNIX
@@ -35,7 +36,7 @@ class ShmTensorSchema:
     shape: tuple[int, ...] | list[int]
     dtype: str
     shm: str
-    buf_from: int = 0
+    buf_from: int = SHM_HEADER_SIZE
 
     def to_dict(self):
         return _deepcopy(self.__dict__)

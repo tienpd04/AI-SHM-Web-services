@@ -10,16 +10,15 @@ from numpy.typing import NDArray
 from src.config.engine import ENGINE_SOCKET_ADDRESS as ADDRESS
 from src.config.engine import ENGINE_SOCKET_FAMILY as SOCKET_FAMILY
 from src.config.engine import ENGINE_SOCKET_KIND as SOCKET_KIND
-from src.config.engine import STORAGE_DIR
+from src.config.engine import STORAGE_DIR, SHM_HEADER_SIZE
 from src.config.engine import EngineSocketAPI as SocketAPI
 from src.config.engine import ShmTensorSchema
 from src.libs.socket_protocol.client.exceptions import (RequestException,
                                                         StatusCodeError)
-from src.libs.misc.np_utils import ndarray_sum_hash, list_ndarray_sum_hash
 from src.libs.socket_protocol.client.requests import request
 from src.web.core.logging import logger
 
-from .resources import acquire, release
+from .resources import acquire, release, get_shm_lock
 
 
 def engine_health_check(raise_exp=True, timeout=10) -> bool:
@@ -85,30 +84,51 @@ def _load_outputs(response_dict: dict, output_shm: SharedMemory) -> list[NDArray
     mode = response_dict.get("mode")
     outputs: list | dict = response_dict.get("outputs")
 
-
     if mode == "shm":
-        outputs_hash_hex = response_dict.get('outputs_hash')
+        shm_nonce = response_dict.get('shm_nonce')
         list_outputs: list[NDArray] = []
+        list_schemas: list[ShmTensorSchema] = []
         for tensor_info in outputs:
             tensor_schema = ShmTensorSchema(**tensor_info)
             if tensor_schema.shm != output_shm.name:
                 raise RequestException(
                     f"Invalid output SHM name, expected: '{output_shm.name}', actual: '{tensor_schema.shm}'")
-            buf = output_shm.buf if tensor_schema.buf_from == 0 else output_shm.buf[
-                tensor_schema.buf_from:]
             output_tensor = np.ndarray(
-                shape=tensor_schema.shape, dtype=tensor_schema.dtype, buffer=buf).copy() # Copy is required to release resources
+                shape=tensor_schema.shape, dtype=tensor_schema.dtype)
             list_outputs.append(output_tensor)
-        confirm_hash_hex = list_ndarray_sum_hash(list_outputs).hexdigest()
-        if confirm_hash_hex != outputs_hash_hex:
-            raise RequestException(
-                                f"Invalid outputs hash, the SHM may be overwriten")
+            list_schemas.append(tensor_schema)
+
+        lock = get_shm_lock(output_shm)
+
+        if lock.acquire(block=False):
+            # This scope does not create any objects but merely copies data.
+            # It is essential to ensure that no crashes occur within this scope and that the lock is successfully released.
+            try:
+                buf = output_shm.buf
+                if buf[:SHM_HEADER_SIZE].hex() != shm_nonce:
+                    raise RequestException(
+                        "Invalid output SHM header. The output SHM may be overwritten")
+                for i, output in enumerate(list_outputs):
+                    schema = list_schemas[i]
+                    shm_tensor = np.ndarray(
+                        shape=schema.shape, dtype=schema.dtype, buffer=buf[schema.buf_from:])
+                    output[:] = shm_tensor[:]
+
+            finally:
+                lock.release()
+
+        else:
+            raise RuntimeError(
+                "Too many processes or threads accessing SHM simultaneously.")
 
         return list_outputs
 
     elif mode == "file":
         filepath = outputs.get('filepath')
         return _load_ouputs_from_file(filepath)
+
+    else:
+        raise RequestException(f"Engine returned an invalid output mode: '{mode}'")
 
 
 def _inference_from_file(model_name: str, tensor_file_path: str, timeout: float = None) -> list[NDArray]:
@@ -152,12 +172,11 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
     """Request inferece to engine via shared memory or file
     """
 
-    shms = acquire([input_tensor.nbytes])
-
+    shms = acquire([input_tensor.nbytes + SHM_HEADER_SIZE])
 
     if not shms:
         logger.warning(
-                    "Failed to acquire shared memory with size %d, try request to engine with 'file' mode", input_tensor.nbytes)
+            "Failed to acquire shared memory with size %d, try request to engine with 'file' mode", input_tensor.nbytes)
         _task_counter.increase_file()
         _log_engine_tasks_interval()
         file_path = os.path.join(STORAGE_DIR, secrets.token_hex(16) + ".npy")
@@ -176,22 +195,39 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
         _log_engine_tasks_interval()
         input_shm = shms[0]
         output_shm = input_shm
-        input_hash = ndarray_sum_hash(input_tensor).hexdigest()
-        try:
-            array = np.ndarray(shape=input_tensor.shape,
-                               dtype=input_tensor.dtype, buffer=input_shm.buf)
-            array[:] = input_tensor[:]
-        except Exception:
+        nonce = secrets.token_bytes(SHM_HEADER_SIZE)
+        lock = get_shm_lock(input_shm)
+        bind_input_error = None
+
+        if lock.acquire(block=False):
+            # This scope does not create any objects but merely copies data.
+            # It is essential to ensure that no crashes occur within this scope and that the lock is successfully released.
+            try:
+                buf = input_shm.buf
+                buf[:SHM_HEADER_SIZE] = nonce
+                array = np.ndarray(shape=input_tensor.shape,
+                                   dtype=input_tensor.dtype, buffer=buf[SHM_HEADER_SIZE:])
+                array[:] = input_tensor[:]
+            except Exception as e:
+                bind_input_error = e
+            finally:
+                lock.release()
+        else:
             release(shms)
-            raise
+            raise RuntimeError(
+                "Too many processes or threads accessing SHM simultaneously.")
+
+        if bind_input_error is not None:
+            release(shms)
+            raise bind_input_error
+
         tensor_content = ShmTensorSchema(
-            shape=input_tensor.shape, dtype=input_tensor.dtype.name, shm=input_shm.name).original_dict()
+            shape=input_tensor.shape, dtype=input_tensor.dtype.name, shm=input_shm.name, buf_from=SHM_HEADER_SIZE).original_dict()
 
         content = {'model_name': model_name,
-                    'input_tensor': tensor_content, 'mode': 'shm', 'output_shm': output_shm.name, 'input_hash': input_hash}
-        # try:
+                   'input_tensor': tensor_content, 'mode': 'shm', 'output_shm': output_shm.name, 'shm_nonce': nonce.hex()}
         res = request(ADDRESS, SocketAPI.INFERENCE, data=content,
-                        address_family=SOCKET_FAMILY, socket_kind=SOCKET_KIND, ensure_ascii=True, timeout=timeout)
+                      address_family=SOCKET_FAMILY, socket_kind=SOCKET_KIND, ensure_ascii=True, timeout=timeout)
 
         try:
             res.raise_for_status()
@@ -201,16 +237,15 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
             outputs = _load_outputs(response_dict, output_shm)
 
         except StatusCodeError as e:
-                    try:
-                        msg = res.text
-                    except Exception:
-                        msg = ''
-                    raise RequestException(
-                        f"Request failed with status code {res.status_code}: {msg}") from e
+            try:
+                msg = res.text
+            except Exception:
+                msg = ''
+            raise RequestException(
+                f"Request failed with status code {res.status_code}: {msg}") from e
         finally:
             # Release the shared memory only after receiving a response from the engine.
             # If it is released upon an error or timeout, the shared memory could be overwritten.
             # If not released here, the shared memory will be reused after a sufficient timeout period (managed by the resources_manager module).
             release(shms)
         return outputs
-

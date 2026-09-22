@@ -19,10 +19,14 @@ def acquire(sizes: list[int]) -> list[SharedMemory] | None:
     return [get_shm(x) for x, _ in ret]
 
 def release(shms: list[SharedMemory]):
-    return resources_manager.release(set([shm.name for shm in shms]))
+    return resources_manager.release({shm.name for shm in shms})
+
+def get_shm_lock(shm: SharedMemory):
+    return resources_manager.get_shm_lock(shm.name)
 
 __all__ = [
     'get_shm',
     'acquire',
-    'release'
+    'release',
+    'get_shm_lock'
     ]

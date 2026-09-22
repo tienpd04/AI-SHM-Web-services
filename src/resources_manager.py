@@ -1,8 +1,12 @@
-
+from __future__ import annotations
 import struct
 import time
 from multiprocessing import Lock
 from multiprocessing.shared_memory import SharedMemory
+from types import MappingProxyType
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from multiprocessing.synchronize import Lock as LockT
 
 
 class _OneSizeResourcesManager:
@@ -100,6 +104,8 @@ _manager = None
 
 _initial_key = None
 
+_shm_locks: dict[str, LockT] = {}
+
 def initialize(names: set[str], size: int, reuse_after_timeout_enough: float | int, initial_key: str):
     """For use only by the main process
     """
@@ -125,6 +131,8 @@ def initialize(names: set[str], size: int, reuse_after_timeout_enough: float | i
         raise ValueError("'reuse_after_timeout_enough' must be a positive number")
 
     _manager = _OneSizeResourcesManager(names, size, reuse_after_timeout_enough)
+    for name in names:
+        _shm_locks[name] = Lock()
     _initial_key = initial_key
 
 
@@ -160,10 +168,14 @@ def cleanup(initial_key: str):
     with _lock:
         _manager.cleanup()
 
+def get_shm_lock(name: str) -> LockT:
+    return _shm_locks[name]
+
 
 __all__ = [
     'initialize',
     'acquire',
     'release',
-    'cleanup'
+    'cleanup',
+    'get_shm_lock'
 ]
