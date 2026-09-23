@@ -55,6 +55,7 @@ def _load_shm_input_tensor(tensor_info: dict, shm_nonce: str) -> tuple[NDArray, 
 
 
 def _bind_shm_outputs(outputs: list[NDArray], shm: SharedMemory) -> tuple[list[ShmTensorSchema], bytes]:
+    tensor_schemas: list[ShmTensorSchema] = []
     shm_nonce = secrets.token_bytes(SHM_HEADER_SIZE)
     shm_buff = shm.buf
     lock = get_shm_lock(shm.name)
@@ -62,7 +63,7 @@ def _bind_shm_outputs(outputs: list[NDArray], shm: SharedMemory) -> tuple[list[S
         try:
             shm_buff[:SHM_HEADER_SIZE] = shm_nonce
             buf_from = SHM_HEADER_SIZE
-            tensor_schemas: list[ShmTensorSchema] = []
+
             for tensor in outputs:
                 array = np.ndarray(shape=tensor.shape,
                                 dtype=tensor.dtype, buffer=shm_buff[buf_from:])
