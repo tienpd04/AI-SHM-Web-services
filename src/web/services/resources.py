@@ -5,8 +5,12 @@ from multiprocessing.shared_memory import SharedMemory
 from src.config.resources import (RESOURCES_SOCKET_ADDRESS,
                                   RESOURCES_SOCKET_FAMILY,
                                   RESOURCES_SOCKET_KIND, ResourcesSocketAPI)
+from src.config.settings import DEATHLOCK_CHECKING_TIME, DEATHLOCKS_CHECKING
 from src.libs.socket_protocol.client import StatusCodeError, request
 from src.web.core.logging import logger
+
+if DEATHLOCKS_CHECKING:
+    from src.shared import get_shm_lock
 
 _rs_api_key = 0
 _shms: tuple[SharedMemory, ...] = ()
@@ -53,14 +57,34 @@ def _take_resources() -> bool:
         res = request(RESOURCES_SOCKET_ADDRESS, ResourcesSocketAPI.TAKE_RESOURCES, data=data,
                       address_family=RESOURCES_SOCKET_FAMILY, socket_kind=RESOURCES_SOCKET_KIND, timeout=30)
         res.raise_for_status()
-        names = res.json()
+        res_dict = res.json()
         assert isinstance(
-            names, list), f"Required response as a list, not {type(names)}"
+            res_dict, dict), f"Required response as a dict, not {type(res_dict)}"
+        names = res_dict.get("resources")
+
+        assert isinstance(names, list), f"Required resources as a list, not {type(names)}"
+
         assert all([isinstance(x, str) for x in names]
                    ), f"Required each element in list is str: {names}"
         assert len(names) > 0, "Required atleast one resource"
         assert len(
             set(names)) == len(names), f"Resources name must be unique, actual return: {names}"
+        is_new = res_dict.get("is_new")
+        assert isinstance(is_new, bool), "is_new must be a bool"
+
+        if not is_new and DEATHLOCKS_CHECKING:
+            for shm_name in names:
+                lock = get_shm_lock(shm_name)
+                got_lock = lock.acquire(True, timeout=DEATHLOCK_CHECKING_TIME)
+                try:
+                    lock.release()
+                except ValueError:
+                    # Other service ('engine master') also checking the death lock. It's may be released before.
+                    pass
+                else:
+                    if not got_lock:
+                        logger.warning("A deadlock was detected for SHM '%s'. It was automatically released after the %.2f seconds timeout expired.", shm_name, DEATHLOCK_CHECKING_TIME)
+
         shms = [SharedMemory(name) for name in names]
         _shms = tuple(shms)
 

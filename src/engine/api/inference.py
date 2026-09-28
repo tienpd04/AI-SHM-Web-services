@@ -11,11 +11,11 @@ if TYPE_CHECKING:
 
 import numpy as np
 
-from src.config.engine import STORAGE_DIR, SHM_HEADER_SIZE, ShmTensorSchema
+from src.config.engine import SHM_HEADER_SIZE, STORAGE_DIR, ShmTensorSchema
 from src.libs.socket_protocol.server import (ASCIIJsonResponse, JSONResponse,
                                              PlainTextResponse, Request,
                                              Response, SocketApplicaltion)
-from src.globals_signals import get_shm_lock
+from src.shared import get_shm_lock, increase_overwritten
 
 from ..core.engine import Engine, InvalidModelName
 from ..core.shm import get_shm
@@ -24,60 +24,79 @@ from ..utils.logging import logger
 # import time
 
 if STORAGE_DIR.isascii():
-    FileModeResponse: TypeAlias = JSONResponse
-else:
     FileModeResponse: TypeAlias = ASCIIJsonResponse
+else:
+    FileModeResponse: TypeAlias = JSONResponse
 
 
 def _load_shm_input_tensor(tensor_info: dict, shm_nonce: str) -> tuple[NDArray, SharedMemory]:
 
     tensor_schema = ShmTensorSchema(**tensor_info)
     shm = get_shm(tensor_schema.shm)
+    buf = shm.buf
 
     tensor = np.ndarray(shape=tensor_schema.shape,
                         dtype=tensor_schema.dtype)
+    shm_tensor = np.ndarray(shape=tensor_schema.shape,
+                            dtype=tensor_schema.dtype, buffer=buf[tensor_schema.buf_from:])
+    header_hex = None
     lock = get_shm_lock(shm.name)
-    if lock.acquire(block=False):
+    if lock.acquire(False):
+        # Safety lock: just copy data, do not create any big object and do not use unfamiliar module
+        # Ensuring that deathlocks never occur.
         try:
-            buf = shm.buf
-            if buf[:SHM_HEADER_SIZE].hex() != shm_nonce:
-                raise ValueError(
-                    "Invalid SHM header. The SHM may be overwritten.")
-            shm_tensor = np.ndarray(shape=tensor_schema.shape,
-                                    dtype=tensor_schema.dtype, buffer=buf[tensor_schema.buf_from:])
+            header_hex = buf[:SHM_HEADER_SIZE].hex()
             tensor[:] = shm_tensor[:]
         finally:
             lock.release()
     else:
         raise RuntimeError(
             "Too many processes or threads accessing SHM simultaneously.")
+
+    if header_hex != shm_nonce:
+        increase_overwritten()
+        raise ValueError("Invalid SHM header. The SHM may be overwritten.")
+
     return tensor, shm
 
 
 def _bind_shm_outputs(outputs: list[NDArray], shm: SharedMemory) -> tuple[list[ShmTensorSchema], bytes]:
     tensor_schemas: list[ShmTensorSchema] = []
+    shm_tensors: list[NDArray] = []
     shm_nonce = secrets.token_bytes(SHM_HEADER_SIZE)
     shm_buff = shm.buf
+    buf_from = SHM_HEADER_SIZE
+
+    for tensor in outputs:
+        shm_tensor = np.ndarray(shape=tensor.shape,
+                                dtype=tensor.dtype, buffer=shm_buff[buf_from:])
+
+        schema = ShmTensorSchema(
+            shape=tensor.shape, dtype=tensor.dtype.name, shm=shm.name, buf_from=buf_from)
+
+        tensor_schemas.append(schema)
+        shm_tensors.append(shm_tensor)
+
+        buf_from += shm_tensor.nbytes
+
     lock = get_shm_lock(shm.name)
-    if lock.acquire(block=False):
+
+    if lock.acquire(False):
+        # Safety lock: just copy data, do not create any big object and do not use unfamiliar module
+        # Ensuring that deathlocks never occur.
         try:
             shm_buff[:SHM_HEADER_SIZE] = shm_nonce
-            buf_from = SHM_HEADER_SIZE
 
-            for tensor in outputs:
-                array = np.ndarray(shape=tensor.shape,
-                                dtype=tensor.dtype, buffer=shm_buff[buf_from:])
-                array[:] = tensor[:]
+            for i, tensor in enumerate(outputs):
+                shm_tensor = shm_tensors[i]
+                shm_tensor[:] = tensor[:]
 
-                schema = ShmTensorSchema(
-                    shape=tensor.shape, dtype=tensor.dtype.name, shm=shm.name, buf_from=buf_from)
-                buf_from += array.nbytes
-                tensor_schemas.append(schema)
         finally:
             lock.release()
     else:
         raise RuntimeError(
             "Too many processes or threads accessing SHM simultaneously.")
+
     return tensor_schemas, shm_nonce
 
 

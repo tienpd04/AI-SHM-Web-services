@@ -1,4 +1,4 @@
-import logging
+
 import os
 import signal
 import socket
@@ -7,35 +7,33 @@ import sys
 from src.config.resources import (RESOURCES_SOCKET_ADDRESS,
                                   RESOURCES_SOCKET_FAMILY,
                                   RESOURCES_SOCKET_KIND, ResourcesSocketAPI)
-
-
 from src.resources.logger import logger as _logger
 
+# def _setup_app_logger():
+#     import logging
+#     from logging.handlers import TimedRotatingFileHandler
+#     log_level = logging.INFO
+#     logger = logging.getLogger("resources-socketapp")
+#     logger.setLevel(log_level)
 
-def _setup_app_logger():
-    from logging.handlers import TimedRotatingFileHandler
-    log_level = logging.INFO
-    logger = logging.getLogger("resources-socketapp")
-    logger.setLevel(log_level)
+#     formatter = logging.Formatter(
+#         '[%(asctime)s] [%(name)s] [%(process)d] [%(levelname)s] %(message)s')
 
-    formatter = logging.Formatter(
-        '[%(asctime)s] [%(name)s] [%(process)d] [%(levelname)s] %(message)s')
+#     from src.config.settings import LOGS_DIR, NUM_LOG_BACKUP
 
-    from src.config.settings import LOGS_DIR, NUM_LOG_BACKUP
+#     file_handler = TimedRotatingFileHandler(os.path.join(LOGS_DIR, "rs-socketapp.log"), when='MIDNIGHT', backupCount=NUM_LOG_BACKUP)
+#     file_handler.setLevel(log_level)
+#     file_handler.setFormatter(formatter)
+#     logger.addHandler(file_handler)
 
-    file_handler = TimedRotatingFileHandler(os.path.join(LOGS_DIR, "rs-socketapp.log"), when='MIDNIGHT', backupCount=NUM_LOG_BACKUP)
-    file_handler.setLevel(log_level)
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-
-    return logger
+#     return logger
 
 
 def _create_rs_manager(resources):
     from src.config.settings import NUM_WORKERS
     from src.resources.manager import ResourcesManager
     manager = ResourcesManager(
-        resources, NUM_WORKERS)
+        resources, NUM_WORKERS, 32)
     return manager
 
 
@@ -44,14 +42,16 @@ def _create_app(manager):
     from src.libs.socket_protocol.server import SocketApplicaltion
     from src.resources.apis import health_check, take_resources
 
-    app = SocketApplicaltion(logger=_setup_app_logger(), timeout=10)
+    # app = SocketApplicaltion(logger=_setup_app_logger(), timeout=10)
+
+    app = SocketApplicaltion(logger=_logger, timeout=10)
 
     setattr(app.state, 'manager', manager)
 
     app.register(ResourcesSocketAPI.HEALTH_CHECK,
                  health_check, "Health Check API")
     app.register(ResourcesSocketAPI.TAKE_RESOURCES,
-                 take_resources, "Get Worker Resources")
+                 take_resources, "Worker Takes Resources API")
     return app
 
 
@@ -128,6 +128,7 @@ def resources_target(resources: list[tuple[str, ...]], ready_event=None):
         ready_event.set()  # type: ignore
     try:
         app.run(server_socket)
+        # app.run(server_socket, log_traceback=False)
     except (KeyboardInterrupt, SystemExit):
         pass
 

@@ -10,23 +10,23 @@ def _create_engine():
     from src.engine.core.engine import Engine
     return Engine()
 
-def _setup_socket_app_logger():
-    from logging.handlers import TimedRotatingFileHandler
-    log_level = logging.INFO
-    app_logger = logging.getLogger("engine-socketapp")
-    app_logger.setLevel(log_level)
+# def _setup_socket_app_logger():
+#     from logging.handlers import TimedRotatingFileHandler
+#     log_level = logging.INFO
+#     app_logger = logging.getLogger("engine-socketapp")
+#     app_logger.setLevel(log_level)
 
-    formatter = logging.Formatter(
-        '[%(asctime)s] [%(name)s] [%(process)d] [%(levelname)s] %(message)s')
+#     formatter = logging.Formatter(
+#         '[%(asctime)s] [%(name)s] [%(process)d] [%(levelname)s] %(message)s')
 
-    from src.config.settings import LOGS_DIR, NUM_LOG_BACKUP
-    file_handler = TimedRotatingFileHandler(
-        os.path.join(LOGS_DIR,'engine-socketapp.log'), when='MIDNIGHT', backupCount=NUM_LOG_BACKUP)
-    file_handler.setLevel(log_level)
-    file_handler.setFormatter(formatter)
-    app_logger.addHandler(file_handler)
+#     from src.config.settings import LOGS_DIR, NUM_LOG_BACKUP
+#     file_handler = TimedRotatingFileHandler(
+#         os.path.join(LOGS_DIR,'engine-socketapp.log'), when='MIDNIGHT', backupCount=NUM_LOG_BACKUP)
+#     file_handler.setLevel(log_level)
+#     file_handler.setFormatter(formatter)
+#     app_logger.addHandler(file_handler)
 
-    return app_logger
+#     return app_logger
 
 def _create_app(engine):
     from src.config.engine import EngineSocketAPI
@@ -34,8 +34,10 @@ def _create_app(engine):
     from src.engine.api.inference import inference
     from src.libs.socket_protocol.server import SocketApplicaltion
 
+    # app_logger = _setup_socket_app_logger()
 
-    app_logger = _setup_socket_app_logger()
+    # The engine logger has been set up on master.
+    app_logger = logging.getLogger("engine")
 
     app = SocketApplicaltion(logger=app_logger, timeout=20)
 
@@ -70,6 +72,7 @@ def start_server_worker(server_socket: socket.socket, ready_event=None) -> None:
         ready_event.set() # type: ignore
     try:
         app.run(server_socket)
+        # app.run(server_socket, log_traceback=False)
     except (KeyboardInterrupt, SystemExit):
         pass
     logger.info("Shutting down")

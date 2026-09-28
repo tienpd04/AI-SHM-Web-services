@@ -178,8 +178,8 @@ def request(
 
     with socket.socket(address_family, socket_kind) as client:
         try:
-            if timeout:
-                client.settimeout(timeout)
+            client.setblocking(1)
+            client.settimeout(timeout)
             client.connect(address)
             client.sendall(req_data)
             buff = client.recv(max(first_rcv_size, RESPONSE_HEADER_SIZE))

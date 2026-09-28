@@ -11,7 +11,7 @@ from .improc import letterbox
 
 
 class _CocoYolo11:
-    def __init__(self, conf_thresh = 0.5, iou_thresh = 0.45):
+    def __init__(self, conf_thresh=0.5, iou_thresh=0.45):
         self.conf_thresh = conf_thresh
         self.iou_thresh = iou_thresh
 
@@ -35,17 +35,24 @@ class _CocoYolo11:
         output = cast(NDArray, output[0]).transpose()
         boxes = output[:, :4]
         scores = output[:, 4:]
-        class_score = np.max(scores, axis=1)
+
         class_id = np.argmax(scores, axis=1)
+        class_score = np.take_along_axis(
+            scores, np.expand_dims(class_id, axis=1), axis=1)[:, 0]
+
         keep = class_score >= self.conf_thresh
-        class_id = class_id[keep].copy() # The indexes is not a range, copy is better
+        # The indexes is not a range, copy is better
+        class_id = class_id[keep].copy()
         class_score = class_score[keep].copy()
         boxes = boxes[keep].copy()
+
         boxes[:, 0] = boxes[:, 0] - boxes[:, 2] / 2
         boxes[:, 1] = boxes[:, 1] - boxes[:, 3] / 2
 
-        idxs = cv2.dnn.NMSBoxes(boxes, class_score, self.conf_thresh, self.iou_thresh)
-        boxes = boxes[idxs].copy() # The indexes is not a range, copy is better
+        idxs = cv2.dnn.NMSBoxes(
+            boxes, class_score, self.conf_thresh, self.iou_thresh)
+        # The indexes is not a range, copy is better
+        boxes = boxes[idxs].copy()
         class_id: NDArray = class_id[idxs].copy()
         class_score = class_score[idxs].copy()
 
@@ -53,12 +60,17 @@ class _CocoYolo11:
         boxes[:, 1] -= padding[0]
         boxes *= (max(image.shape[:2])) / 640
 
-        ret = np.hstack((boxes, class_score.reshape((-1, 1)), class_id.reshape(-1, 1).astype(np.float32)))
-        print(ret.shape)
+        # x, y, w, h, conf, class_id
+        ret = np.hstack((boxes, class_score.reshape((-1, 1)),
+                        class_id.reshape(-1, 1).astype(np.float32)))
+        # print(ret.shape)
         return ret
 
 
 _coco_detector = _CocoYolo11()
+
+# coco_detect = _coco_detector.run
+
 
 def coco_detect(img: NDArray) -> NDArray:
     return _coco_detector.run(img)

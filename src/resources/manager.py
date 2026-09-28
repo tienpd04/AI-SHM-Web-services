@@ -34,7 +34,7 @@ def _module_get_rs_api_key():
         _rs_api_key = api_key
     else:
         logger.warning(
-            "Enviroment 'RESOURCES_API_KEY' is not set up or set up it after import module '%s'.", __name__)
+            "Enviroment 'RESOURCES_API_KEY' is not set up or set up it after import module '%s'", __name__)
 
 
 _module_get_rs_api_key()
@@ -64,7 +64,7 @@ class ResourcesManager:
         - Allocate resources to web workers.
         - Check for and reclaim resources from terminated web workers to reallocate them to new web workers.
     """
-    _resources: tuple[tuple[str, str]]
+    _resources: tuple[tuple[str, ...]]
     _taken_at: dict[int, Datetime]
 
     _in_use: dict[int, tuple[str, str]]
@@ -73,7 +73,7 @@ class ResourcesManager:
 
     _replaced_pids: deque[tuple[int, Datetime]]
 
-    def __init__(self, resources: list[tuple[str, str]], num_workers: int, replaced_pids_maxlen: int = 256):
+    def __init__(self, resources: list[tuple[str, ...]], num_workers: int, replaced_pids_maxlen: int = 256):
 
         if not isinstance(resources, (list, tuple)):
             raise ValueError("'resources' must be a list or tuple")
@@ -110,7 +110,7 @@ class ResourcesManager:
         logger.info("Resoucer Manager created with resources: %s, num_workers: %d", sorted(
             resources), num_workers)
 
-    def take_forever(self, api_key: str, worker_pid: int) -> tuple[str, str] | None:
+    def take_forever(self, api_key: str, worker_pid: int) -> tuple[tuple[str, ...], bool] | None:
         RESOURCES_API_KEY = _get_rs_api_key()
         if RESOURCES_API_KEY and api_key != RESOURCES_API_KEY:
             raise InvalidApiKey()
@@ -125,17 +125,17 @@ class ResourcesManager:
         if worker_pid in self._in_use:
             logger.warning("Worker PID %d take resources too many time")
             self._taken_at[worker_pid] = Datetime.now()
-            return self._in_use[worker_pid]
+            return self._in_use[worker_pid], False
 
         all_in_use: set[tuple[str, str]] = set(self._in_use.values())
 
         available = set(self._resources) - all_in_use
 
         if available:
-            ret = available.pop()
-            self._in_use[worker_pid] = ret
+            rs = available.pop()
+            self._in_use[worker_pid] = rs
             self._taken_at[worker_pid] = Datetime.now()
-            return ret
+            return rs, True
 
         else:
             # Check for and reclaim resources from terminated web workers to reallocate them
@@ -145,16 +145,16 @@ class ResourcesManager:
                     replace_pid = pid
                     break
             if replace_pid is not None:
-                ret = self._in_use.pop(replace_pid)
+                rs = self._in_use.pop(replace_pid)
                 self._taken_at.pop(replace_pid, None)
                 logger.warning(
-                    "Taked resouces for worker PID %d from terminated worker PID %d, resources: %s", worker_pid, replace_pid, ret)
-                self._in_use[worker_pid] = ret
+                    "Taked resouces for worker PID %d from terminated worker PID %d, resources: %s", worker_pid, replace_pid, rs)
+                self._in_use[worker_pid] = rs
                 now = Datetime.now()
                 self._taken_at[worker_pid] = now
                 self._replaced_pids.append((replace_pid, now))
 
-                return ret
+                return rs, False
             logger.warning(
                 "No resources available for worker PID: %d", worker_pid)
             return None

@@ -11,8 +11,8 @@ from enum import StrEnum as _StrEnum
 from typing import Final as _Final
 
 from .settings import ENGINE_UNIX_SOCKET_PATH as _ENGINE_UNIX_SOCKET_PATH
-from .settings import STORAGE_DIR as STORAGE_DIR
 from .settings import SHM_HEADER_SIZE as SHM_HEADER_SIZE
+from .settings import STORAGE_DIR as STORAGE_DIR
 
 ENGINE_SOCKET_ADDRESS: _Final[str] = _ENGINE_UNIX_SOCKET_PATH
 ENGINE_SOCKET_FAMILY: _Final[int] = _socket.AF_UNIX

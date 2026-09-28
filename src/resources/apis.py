@@ -33,8 +33,8 @@ def health_check(req: Request):
         inuse = manager.inuse()
         taken_at = manager.taken_at()
         taken_at_format = {k: v.isoformat() for k, v in taken_at.items()}
-        replace_pids = manager.get_last_replaced_pids()
-        log_replaces = [(k, v.isoformat()) for k, v in replace_pids]
+        replaced_pids = manager.get_last_replaced_pids()
+        log_replaces = [(k, v.isoformat()) for k, v in replaced_pids]
         logger.info("[Interval Log] [Resources Manager] In use: %s", inuse)
         logger.info("[Interval Log] [Resources Manager] Taken at: %s", taken_at_format)
         logger.info(
@@ -54,7 +54,7 @@ def take_resources(req: Request) -> ASCIIJsonResponse:
     Return:
     case success:
         type: ASCIIJsonResponse
-        content: list[str]:  ['Shm_01', 'Shm_02', ...]
+        content: {"resources" : ['Shm_01', 'Shm_02', ...], "is_new": bool}
 
     case failure:
         type: ASCIIPlainTextResponse
@@ -81,7 +81,8 @@ def take_resources(req: Request) -> ASCIIJsonResponse:
         cast(SocketApplicaltion, req.app).state, 'manager'))
 
     try:
-        resources = manager.take_forever(api_key, worker_pid)
+        ret = manager.take_forever(api_key, worker_pid)
+        print(ret)
 
     except InvalidApiKey:
         return ASCIIPlainTextResponse(f"Invalid api key", 403)
@@ -93,8 +94,9 @@ def take_resources(req: Request) -> ASCIIJsonResponse:
         logger.error("Error while during take resources: %s", str(e))
         return PlainTextResponse(f"Intenal Server Error: {e}", 500)
 
-    if resources is None:
+    if ret is None:
         return ASCIIPlainTextResponse("No available resouces", 400)
 
+    resources, is_new = ret
     logger.info("Worker PID %d taken resources: %s", worker_pid, resources)
-    return ASCIIJsonResponse(resources)
+    return ASCIIJsonResponse({'resources': resources, 'is_new': is_new})

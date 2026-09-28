@@ -5,7 +5,24 @@ import sys
 
 from src.config.engine import (ENGINE_SOCKET_ADDRESS, ENGINE_SOCKET_FAMILY,
                                ENGINE_SOCKET_KIND)
-from src.config.settings import LOGS_DIR, NUM_LOG_BACKUP
+from src.config.settings import DEATHLOCKS_CHECKING, LOGS_DIR, NUM_LOG_BACKUP
+
+if DEATHLOCKS_CHECKING:
+    def _deathlocks_checking():
+        from src.config.settings import DEATHLOCK_CHECKING_TIME
+        from src.shared import get_all_shm_locks
+        shm_locks = get_all_shm_locks()
+        for shm_name, lock in shm_locks.items():
+            got_lock = lock.acquire(True, timeout=DEATHLOCK_CHECKING_TIME)
+            try:
+                lock.release()
+            except ValueError:
+                # Other service ('web application worker') also checking the death lock. It's may be released before.
+                pass
+            else:
+                if not got_lock:
+                    logger.warning("A deadlock was detected for SHM '%s'. It was automatically released after the %.2f seconds timeout expired.", shm_name, DEATHLOCK_CHECKING_TIME)
+
 
 
 def _setup_logging():
@@ -93,6 +110,9 @@ def engine_target(ready_event=None):
                     term_signal = os.WTERMSIG(status)
                     logger.error(
                         "Engine worker %d terminated by signal %d", child_pid, term_signal)
+
+                    if DEATHLOCKS_CHECKING:
+                        _deathlocks_checking()
                     # Going to create new worker
                     continue
                 else:

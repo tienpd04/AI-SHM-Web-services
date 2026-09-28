@@ -9,8 +9,6 @@ from multiprocessing.shared_memory import SharedMemory
 def _web_process():
     from src.web_master import web_target
     web_target()
-    # from src.web_master import dummy_crash_web_workers
-    # dummy_crash_web_workers()
 
 
 def _engine_process(ready_event=None):
@@ -52,13 +50,14 @@ def _setup_logging():
     return logger
 
 
-def _create_resources() -> tuple[list[SharedMemory], list[tuple[str, str]]]:
+def _create_resources() -> tuple[list[SharedMemory], list[tuple[str, ...]]]:
 
-    from src.config.settings import (NUM_WORKERS, RESOURCE_SHM_SIZE_MB, SHM_HEADER_SIZE)
+    from src.config.settings import (NUM_WORKERS, RESOURCE_SHM_SIZE_MB,
+                                     SHM_HEADER_SIZE)
     _logger.info("Creating shared resources using beween processes")
 
     shm_list: list[SharedMemory] = []
-    name_tuples: list[tuple[str, str]] = []
+    name_tuples: list[tuple[str, ...]] = []
     NUM_SHM = NUM_WORKERS + 1  # Backup 1
     for i in range(NUM_SHM):
         shm = SharedMemory(
@@ -110,8 +109,8 @@ def main():
 
     shm_list, name_tuples = _create_resources()
 
-    from src import globals_signals
-    globals_signals.initialize({shm.name for shm in shm_list})
+    from src import shared
+    shared.initialize({shm.name for shm in shm_list})
 
     from multiprocessing import Event, Process
 

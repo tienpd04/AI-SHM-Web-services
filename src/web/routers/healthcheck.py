@@ -3,15 +3,20 @@ import time
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from src.web.core.logging import rq_log_error, rq_log_info
+from src.shared import get_overwritten_value
+from src.web.core.logging import logger, rq_log_error, rq_log_info
 from src.web.services.engine import engine_health_check
 from src.web.services.resources import rs_health_check
 
 router = APIRouter()
 
+
 @router.get("/api/v1/health")
 async def health_check(request: Request):
+
     t1 = time.perf_counter()
+    logger.info("[Interval Log] Number of times shared memory was overwritten: %d",
+                get_overwritten_value())
     errors = {}
     try:
         engine_health_check()
@@ -30,6 +35,7 @@ async def health_check(request: Request):
     t2 = time.perf_counter()
 
     if errors:
-        return JSONResponse({"message":"Health check failed", "errors": errors}, status_code=500)
-    rq_log_info(request, f'Health check succeeded, Time = {(t2 - t1):.06f} seconds')
+        return JSONResponse({"message": "Health check failed", "errors": errors}, status_code=500)
+    rq_log_info(
+        request, f'Health check succeeded, Time = {(t2 - t1):.06f} seconds')
     return JSONResponse({"status": "healthy"}, status_code=200)

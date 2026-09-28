@@ -1,8 +1,8 @@
 
+import errno
 import logging
 import socket
 import struct
-import time
 import traceback
 from enum import IntFlag
 from socket import SocketType
@@ -164,61 +164,47 @@ class SocketApplicaltion:
         self,
         # NOTE: server_socket must be binded and listesning before run the application
         server_socket: socket.socket,
-        raise_exception: bool = False,
         log_traceback=True,
-        stop_after_consecutive_accept_error=100,
     ) -> NoReturn:
-
+        server_socket.setblocking(1)
         logger = self._logger
         handle = self._handle
-        accept_error = 0
         while True:
             try:
-                try:
-                    conn, address = server_socket.accept()
-                except Exception:
-                    # Never in this case if the server_socket is binded and listesning
+                conn, address = server_socket.accept()
+            except OSError as e:
+                if e.errno in (errno.EINVAL, errno.EBADF):
+                    raise
+                if e.errno not in (errno.ECONNABORTED, errno.EAGAIN, errno.EWOULDBLOCK):
                     if logger is not None:
-                        if log_traceback:
-                            logger.error(
-                                "Failed to accept connection from server_socket:\n%s", traceback.format_exc())
-                        else:
-                            logger.error(
-                                "Failed to accept connection from server_socket: %s", str(e))
-                    accept_error += 1
-                    if accept_error >= stop_after_consecutive_accept_error:
-                        import sys
-                        sys.exit(1)
-                    else:
-                        time.sleep(1)
-                        continue
-                else:
-                    accept_error = 0
+                        logger.error(
+                            "'server_socket' accept failed: %s", str(e))
+                continue
 
-                try:
-                    handle(conn, address)
-                except socket.timeout:
-                    if logger is not None:
-                        logger.warning(
-                            "Connection timeout from address: '%s'", str(address) or _get_client_info(conn))
-                except ConnectionError:
-                    if logger is not None:
-                        logger.warning(
-                            "Disconnected from address: '%s'", str(address) or _get_client_info(conn))
-                finally:
-                    conn.close()
+            try:
+                handle(conn, address)
+            except socket.timeout:
+                if logger is not None:
+                    logger.warning(
+                        "Connection timeout from address: '%s'", str(address) or _get_client_info(conn))
+            except ConnectionError:
+                if logger is not None:
+                    logger.warning(
+                        "Disconnected from address: '%s'", str(address) or _get_client_info(conn))
 
             except Exception as e:
-                if raise_exception:
-                    raise
-                else:
-                    if logger is not None:
-                        if log_traceback:
-                            logger.error(
-                                "Exception from Socket Application:\n%s", traceback.format_exc())
-                        else:
-                            logger.error(
-                                "Exception from Socket Application: %s", str(e))
+                if logger is not None:
+                    if log_traceback:
+                        logger.error(
+                            "Exception from Socket Application:\n%s", traceback.format_exc())
+                    else:
+                        logger.error(
+                            "Exception from Socket Application: %s", str(e))
+            finally:
+                try:
+                    conn.close()
+                except OSError:
+                    pass
 
     def _prepare_request(self, conn: SocketType, address) -> Request | None:
         """Parser the header and validate
@@ -275,6 +261,7 @@ class SocketApplicaltion:
     def _handle(self, conn: SocketType, address):
         """Hanle the connection
         """
+        conn.setblocking(1)
         conn.settimeout(self._timeout)
         req = self._prepare_request(conn, address)
         if req is None:
