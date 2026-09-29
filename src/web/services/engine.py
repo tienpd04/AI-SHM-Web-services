@@ -13,11 +13,10 @@ from src.config.engine import ENGINE_SOCKET_KIND as SOCKET_KIND
 from src.config.engine import SHM_HEADER_SIZE, STORAGE_DIR
 from src.config.engine import EngineSocketAPI as SocketAPI
 from src.config.engine import ShmTensorSchema
-from src.config.settings import DEATHLOCKS_CHECKING
 from src.libs.socket_protocol.client.exceptions import (RequestException,
                                                         StatusCodeError)
 from src.libs.socket_protocol.client.requests import request
-from src.shared import (deathlocks_checking_event, get_shm_lock,
+from src.shared import (get_shm_lock,
                         overwritten_counter)
 from src.web.core.logging import logger
 
@@ -191,7 +190,7 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
         Do not use this function in multi-threading. The SHM can be overwritten.
     """
 
-    using_shm = not DEATHLOCKS_CHECKING or not deathlocks_checking_event.is_set()
+    using_shm = True
     if using_shm:
         shms = get_shms()
         if shms:

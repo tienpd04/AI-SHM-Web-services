@@ -70,19 +70,6 @@ RESOURCES_UNIX_SOCKET_PATH: str = _getenv("RESOURCES_UNIX_SOCKET_PATH", default=
 
 RESOURCES_MANAGER_LOG_INTERVAL: int = _getenv("RESOURCES_MANAGER_LOG_INTERVAL", 3600, cast=int)
 
-# Use only after a worker process has crashed.
-# The server must be restarted if the crashed process held a global lock (unlikely).
-#    - (The server continues running, but the error occurs repeatedly).
-# Set this option to True if you want to automatically check for and release residual locks (death locks).
-#   - The server will recover correctly if the 'DEATHLOCK_CHECKING_TIME' parameter (specified below) is configured appropriately.
-#   - However, if the configured time is insufficient, there is a risk of data being overwritten.
-DEATHLOCKS_CHECKING: bool = _getenv("DEATHLOCKS_CHECKING", False, cast=bool)
-
-# Recommendation: Setup this approximately more than 100 times the maximum execution time of the code block holding the lock.
-DEATHLOCK_CHECKING_TIME: float = _getenv("DEATHLOCK_CHECKING_TIME", 90, cast=float)
-
-if DEATHLOCK_CHECKING_TIME <= 0:
-    raise _EnvironmentSettingError("'DEATHLOCK_CHECKING_TIME' must be a positive number")
 
 SHM_HEADER_SIZE = 16
 
