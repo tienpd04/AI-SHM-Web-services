@@ -5,7 +5,6 @@ from multiprocessing.shared_memory import SharedMemory
 from src.config.resources import (RESOURCES_SOCKET_ADDRESS,
                                   RESOURCES_SOCKET_FAMILY,
                                   RESOURCES_SOCKET_KIND, ResourcesSocketAPI)
-from src.config.settings import DEATHLOCK_CHECKING_TIME, DEATHLOCKS_CHECKING
 from src.libs.socket_protocol.client import StatusCodeError, request
 from src.web.core.logging import logger
 
@@ -13,40 +12,6 @@ _rs_api_key = 0
 _shms: tuple[SharedMemory, ...] = ()
 
 _skip_first_time = False
-
-_dl_checking_event = None
-
-if DEATHLOCKS_CHECKING:
-    from src.shared import get_shm_lock
-    _dl_chk_thread = None
-
-    def _deathlocks_checking(shm_names: list[str]):
-        _dl_checking_event.set()
-
-        for shm_name in shm_names:
-            lock = get_shm_lock(shm_name)
-            got_lock = lock.acquire(True, timeout=DEATHLOCK_CHECKING_TIME)
-            try:
-                lock.release()
-            except ValueError:
-                # Other service ('engine master') also checking the death lock. It's may be released before.
-                pass
-            else:
-                if not got_lock:
-                    logger.warning(
-                        "A deadlock was detected for SHM '%s'. It was automatically released after the %.2f seconds timeout expired.", shm_name, DEATHLOCK_CHECKING_TIME)
-
-        _dl_checking_event.clear()
-
-    def _background_death_lock_checking(shm_names: list[str]):
-        from threading import Event, Thread
-        global _dl_checking_event, _dl_chk_thread
-        if _dl_checking_event is None:
-            _dl_checking_event = Event()
-
-        _dl_checking_event.set()
-        _dl_chk_thread = Thread(target=_deathlocks_checking, args=(shm_names,))
-        _dl_chk_thread.start()
 
 
 def _module_get_rs_api_key():
@@ -111,9 +76,6 @@ def _take_resources() -> bool:
         if not is_new:
             global _skip_first_time
             _skip_first_time = True
-            if DEATHLOCKS_CHECKING:
-                # Checked only one
-                _background_death_lock_checking(names)
 
     except StatusCodeError:
         try:
@@ -145,8 +107,6 @@ def get_shms() -> tuple[SharedMemory, ...]:
         _skip_first_time = False
         return ()
 
-    if _dl_checking_event is not None and _dl_checking_event.is_set():
-        return ()
     return _shms
 
 

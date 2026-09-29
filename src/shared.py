@@ -33,8 +33,6 @@ _shm_locks: dict[str, LockT] = {}
 
 overwritten_counter = _OverwrittenCounter()
 
-deathlocks_checking_event = Event()
-
 
 def initialize(shm_names: set[str]):
     """For use only by the main process
@@ -84,5 +82,4 @@ __all__ = [
     'get_shm_lock',
     'get_all_shm_locks',
     'overwritten_counter',
-    'deathlocks_checking_event'
 ]
