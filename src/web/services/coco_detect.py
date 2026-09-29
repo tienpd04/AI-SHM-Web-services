@@ -63,7 +63,6 @@ class _CocoYolo11:
         # x, y, w, h, conf, class_id
         ret = np.hstack((boxes, class_score.reshape((-1, 1)),
                         class_id.reshape(-1, 1).astype(np.float32)))
-        # print(ret.shape)
         return ret
 
 
