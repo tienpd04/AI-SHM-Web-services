@@ -1,14 +1,39 @@
 from __future__ import annotations
 
-from multiprocessing import Lock, Semaphore
+from multiprocessing import Event, Lock, Semaphore
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from multiprocessing.synchronize import Lock as LockT
 
+
+class _OverwrittenCounter(object):
+    __slots__ = ('_cnt',)
+
+    def __init__(self):
+        self._cnt = Semaphore(0)
+
+    def increase(self):
+        try:
+            self._cnt.release()
+        except ValueError:
+            pass
+
+    def clear(self):
+        while self._cnt.acquire(False):
+            continue
+
+    def get_value(self):
+        return self._cnt.get_value()
+
+
 _inited = False
 
 _shm_locks: dict[str, LockT] = {}
+
+overwritten_counter = _OverwrittenCounter()
+
+deathlocks_checking_event = Event()
 
 
 def initialize(shm_names: set[str]):
@@ -43,22 +68,6 @@ def get_all_shm_locks():
     return _shm_locks.copy()
 
 
-_overwritten_counter = Semaphore(0)
-
-def increase_overwritten():
-    try:
-        _overwritten_counter.release()
-    except ValueError:
-        pass
-
-def clear_overwritten():
-    while _overwritten_counter.acquire(False):
-        continue
-
-def get_overwritten_value():
-    return _overwritten_counter.get_value()
-
-
 # import contextlib
 # @contextlib.contextmanager
 # def shmreadwritecontext(shm_name: str):
@@ -70,13 +79,10 @@ def get_overwritten_value():
 #             lock.release()
 #     else:
 #         raise RuntimeError(f"Too many processes or threads access SHM '{shm_name}' simultaneously.")
-
-
 __all__ = [
     "initialize",
     'get_shm_lock',
     'get_all_shm_locks',
-    'increase_overwritten',
-    'clear_overwritten',
-    'get_overwritten_value'
+    'overwritten_counter',
+    'deathlocks_checking_event'
 ]

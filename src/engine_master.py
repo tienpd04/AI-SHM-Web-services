@@ -8,20 +8,42 @@ from src.config.engine import (ENGINE_SOCKET_ADDRESS, ENGINE_SOCKET_FAMILY,
 from src.config.settings import DEATHLOCKS_CHECKING, LOGS_DIR, NUM_LOG_BACKUP
 
 if DEATHLOCKS_CHECKING:
-    def _deathlocks_checking():
+    from threading import Event, Thread
+
+    # done = Event()
+
+
+    def _deathlocks_checking(stop_event: Event, check_event: Event, cancel_event: Event, task_done: Event):
+        import time
+
         from src.config.settings import DEATHLOCK_CHECKING_TIME
-        from src.shared import get_all_shm_locks
+        from src.shared import deathlocks_checking_event, get_all_shm_locks
         shm_locks = get_all_shm_locks()
-        for shm_name, lock in shm_locks.items():
-            got_lock = lock.acquire(True, timeout=DEATHLOCK_CHECKING_TIME)
-            try:
-                lock.release()
-            except ValueError:
-                # Other service ('web application worker') also checking the death lock. It's may be released before.
-                pass
-            else:
-                if not got_lock:
-                    logger.warning("A deadlock was detected for SHM '%s'. It was automatically released after the %.2f seconds timeout expired.", shm_name, DEATHLOCK_CHECKING_TIME)
+        while 1:
+            while not check_event.is_set():
+                check_event.wait()
+
+            if stop_event.is_set():
+                break
+            logger.info("Deathlocks checking start")
+            deathlocks_checking_event.set()
+            for shm_name, lock in shm_locks.items():
+                got_lock = lock.acquire(True, timeout=DEATHLOCK_CHECKING_TIME)
+                try:
+                    lock.release()
+                except ValueError:
+                    # Other service ('web application worker') also checking the death lock. It's may be released before.
+                    pass
+                else:
+                    if not got_lock:
+                        logger.warning(
+                            "A deadlock was detected for SHM '%s'. It was automatically released after the %.2f seconds timeout expired.", shm_name, DEATHLOCK_CHECKING_TIME)
+            if not cancel_event.is_set():
+                deathlocks_checking_event.clear()
+            logger.info("Deathlocks checking done")
+            check_event.clear()
+            task_done.set()
+
 
 
 
@@ -40,7 +62,8 @@ def _setup_logging():
     stdout_handler.setFormatter(formatter)
     logger.addHandler(stdout_handler)
 
-    file_handler = TimedRotatingFileHandler(os.path.join(LOGS_DIR, "engine.log"), when='MIDNIGHT', backupCount=NUM_LOG_BACKUP)
+    file_handler = TimedRotatingFileHandler(os.path.join(
+        LOGS_DIR, "engine.log"), when='MIDNIGHT', backupCount=NUM_LOG_BACKUP)
     file_handler.setLevel(log_level)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
@@ -51,20 +74,9 @@ def _setup_logging():
 logger = _setup_logging()
 
 
-def _signal_handler(signum, frame):
-    signame = f"{signum}"
-    for sig in signal.Signals:
-        if signum == sig:
-            signame = sig.name
-            break
-    logger.info("Handling signal: %s", signame)
-    sys.exit(0)
-
 
 def engine_target(ready_event=None):
     logger.info("Starting Engine Service")
-    signal.signal(signal.SIGINT, _signal_handler)
-    signal.signal(signal.SIGTERM, _signal_handler)
     server_socket = socket.socket(ENGINE_SOCKET_FAMILY, ENGINE_SOCKET_KIND)
     address = ENGINE_SOCKET_ADDRESS
 
@@ -75,6 +87,16 @@ def engine_target(ready_event=None):
     server_socket.bind(address)
     server_socket.listen(128)
     logger.info("Listening at: %s", str(address))
+    if DEATHLOCKS_CHECKING:
+        from src.shared import deathlocks_checking_event
+        check_event = Event()
+        cancel_event = Event()
+        task_done = Event()
+        stop_event = Event()
+        thr = Thread(target=_deathlocks_checking, args=(stop_event, check_event, cancel_event, task_done))
+        thr.start()
+        import time
+        time.sleep(0.1)
 
     # NOTE:
     # Use only one worker process for the engine.
@@ -112,7 +134,15 @@ def engine_target(ready_event=None):
                         "Engine worker %d terminated by signal %d", child_pid, term_signal)
 
                     if DEATHLOCKS_CHECKING:
-                        _deathlocks_checking()
+                        deathlocks_checking_event.set()
+                        if not check_event.is_set():
+                            check_event.set()
+                        else:
+                            cancel_event.set()
+                            task_done.wait()
+                            cancel_event.clear()
+                            task_done.clear()
+                            check_event.set()
                     # Going to create new worker
                     continue
                 else:
@@ -136,6 +166,8 @@ def engine_target(ready_event=None):
     except ChildProcessError:
         pass
 
+
+
     logger.info("Shutting down: Master")
     server_socket.close()
     if isinstance(address, str) and os.path.exists(address):
@@ -143,6 +175,15 @@ def engine_target(ready_event=None):
             os.remove(address)
         except Exception:
             pass
+
+    if DEATHLOCKS_CHECKING:
+        logger.info("Closing deathlocks checking...")
+        if check_event.is_set():
+            task_done.wait()
+        stop_event.set()
+        check_event.set()
+        thr.join()
+        logger.info("Deathlocks checking closed.")
 
 
 if __name__ == "__main__":

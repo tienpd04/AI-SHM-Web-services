@@ -15,7 +15,7 @@ from src.config.engine import SHM_HEADER_SIZE, STORAGE_DIR, ShmTensorSchema
 from src.libs.socket_protocol.server import (ASCIIJsonResponse, JSONResponse,
                                              PlainTextResponse, Request,
                                              Response, SocketApplicaltion)
-from src.shared import get_shm_lock, increase_overwritten
+from src.shared import get_shm_lock, overwritten_counter
 
 from ..core.engine import Engine, InvalidModelName
 from ..core.shm import get_shm
@@ -54,7 +54,7 @@ def _load_shm_input_tensor(tensor_info: dict, shm_nonce: str) -> tuple[NDArray, 
             "Too many processes or threads accessing SHM simultaneously.")
 
     if header_hex != shm_nonce:
-        increase_overwritten()
+        overwritten_counter.increase()
         raise ValueError("Invalid SHM header. The SHM may be overwritten.")
 
     return tensor, shm

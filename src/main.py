@@ -52,18 +52,23 @@ def _setup_logging():
 
 def _create_resources() -> tuple[list[SharedMemory], list[tuple[str, ...]]]:
 
-    from src.config.settings import (NUM_WORKERS, RESOURCE_SHM_SIZE_MB,
+    from src.config.settings import (NUM_WORKERS, RESOURCE_SHM_INPUT_SIZE_MB,
+                                     RESOURCE_SHM_OUTPUT_SIZE_MB,
                                      SHM_HEADER_SIZE)
     _logger.info("Creating shared resources using beween processes")
 
     shm_list: list[SharedMemory] = []
     name_tuples: list[tuple[str, ...]] = []
-    NUM_SHM = NUM_WORKERS + 1  # Backup 1
-    for i in range(NUM_SHM):
-        shm = SharedMemory(
-            name=f"Shm_{i + 1:02d}", create=True, size=RESOURCE_SHM_SIZE_MB * 1024 * 1024 + SHM_HEADER_SIZE)
-        shm_list.append(shm)
-        name_tuples.append((shm.name, ))
+    NUM_TUPLES = NUM_WORKERS + 1  # Backup 1
+    INPUT_SIZE = RESOURCE_SHM_INPUT_SIZE_MB * 1024 * 1024 + SHM_HEADER_SIZE
+    OUTPUT_SIZE = RESOURCE_SHM_OUTPUT_SIZE_MB * 1024 * 1024 + SHM_HEADER_SIZE
+    for i in range(NUM_TUPLES):
+        input_shm = SharedMemory(
+            name=f"Shm_I_{i + 1:02d}", create=True, size=INPUT_SIZE)
+        output_shm = SharedMemory(name=f"Shm_O_{i + 1:02d}", create=True, size=OUTPUT_SIZE)
+        shm_list.append(input_shm)
+        shm_list.append(output_shm)
+        name_tuples.append((input_shm.name, output_shm.name))
 
     _logger.info("Created shared resources: %s", shm_list)
     return shm_list, name_tuples

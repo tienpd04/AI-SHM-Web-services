@@ -1,9 +1,7 @@
 
 import logging
 import os
-import signal
 import socket
-import sys
 
 
 def _create_engine():
@@ -49,13 +47,9 @@ def _create_app(engine):
     # app_logger.info('All of API:\n %s', app.api_documents())
     return app
 
-def _signal_handler(signum, frame):
-    sys.exit(0)
 
 def start_server_worker(server_socket: socket.socket, ready_event=None) -> None:
 
-    signal.signal(signal.SIGINT, _signal_handler)
-    signal.signal(signal.SIGTERM, _signal_handler)
     pid = os.getpid()
 
     # The engine logger has been set up on master.

@@ -55,16 +55,6 @@ def _create_app(manager):
     return app
 
 
-def _signal_handler(signum, frame):
-    signame = f"{signum}"
-    for sig in signal.Signals:
-        if signum == sig:
-            signame = sig.name
-            break
-    _logger.info("Handling signal: %s", signame)
-    sys.exit(0)
-
-
 def resources_target(resources: list[tuple[str, ...]], ready_event=None):
     '''
     Objective of the Resource Management Process
@@ -104,8 +94,6 @@ def resources_target(resources: list[tuple[str, ...]], ready_event=None):
 
     logger = _logger
     logger.info("Starting Resouces Service")
-    signal.signal(signal.SIGINT, _signal_handler)
-    signal.signal(signal.SIGTERM, _signal_handler)
     pid = os.getpid()
     server_socket = socket.socket(
         RESOURCES_SOCKET_FAMILY, RESOURCES_SOCKET_KIND)

@@ -13,10 +13,12 @@ from src.config.engine import ENGINE_SOCKET_KIND as SOCKET_KIND
 from src.config.engine import SHM_HEADER_SIZE, STORAGE_DIR
 from src.config.engine import EngineSocketAPI as SocketAPI
 from src.config.engine import ShmTensorSchema
+from src.config.settings import DEATHLOCKS_CHECKING
 from src.libs.socket_protocol.client.exceptions import (RequestException,
                                                         StatusCodeError)
 from src.libs.socket_protocol.client.requests import request
-from src.shared import get_shm_lock, increase_overwritten
+from src.shared import (deathlocks_checking_event, get_shm_lock,
+                        overwritten_counter)
 from src.web.core.logging import logger
 
 from .resources import get_shms
@@ -125,7 +127,7 @@ def _load_outputs(response_dict: dict, output_shm: SharedMemory) -> list[NDArray
                 "Too many processes or threads accessing SHM simultaneously.")
 
         if header_hex != shm_nonce:
-            increase_overwritten()
+            overwritten_counter.increase()
             raise RequestException(
                 "Invalid output SHM header. The output SHM may be overwritten")
 
@@ -175,6 +177,8 @@ def _inference_from_file(model_name: str, tensor_file_path: str, timeout: float 
 
 def _log_engine_tasks_interval():
     total = _task_counter.total
+
+    # if total:
     if total and total % 100 == 0:
         logger.info("[Interval Log] Engine tasks for web application worker: total %d, shm %d, file %d",
                     total, _task_counter.shm, _task_counter.file)
@@ -187,17 +191,18 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
         Do not use this function in multi-threading. The SHM can be overwritten.
     """
 
-    using_shm = False
-    shms = get_shms()
-    input_shm = shms[0] if shms else None
-
-    output_shm = shms[1] if len(shms) > 1 else input_shm
-
-    if input_shm is None or input_shm.size < input_tensor.nbytes + SHM_HEADER_SIZE:
-        logger.warning(
-            "Failed to acquire shared memory with size %d, try request to engine with 'file' mode", input_tensor.nbytes + SHM_HEADER_SIZE)
-    else:
-        using_shm = True
+    using_shm = not DEATHLOCKS_CHECKING or not deathlocks_checking_event.is_set()
+    if using_shm:
+        shms = get_shms()
+        if shms:
+            input_shm = shms[0]
+            output_shm = shms[1] if len(shms) > 1 else input_shm
+            if input_shm.size < input_tensor.nbytes + SHM_HEADER_SIZE:
+                logger.warning(
+                    "Failed to acquire shared memory with size %d, try request to engine with 'file' mode", input_tensor.nbytes + SHM_HEADER_SIZE)
+                using_shm = False
+        else:
+            using_shm = False
 
     if not using_shm:
         _task_counter.increase_file()
