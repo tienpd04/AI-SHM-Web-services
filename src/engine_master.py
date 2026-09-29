@@ -12,9 +12,7 @@ if DEATHLOCKS_CHECKING:
 
     # done = Event()
 
-
     def _deathlocks_checking(stop_event: Event, check_event: Event, cancel_event: Event, task_done: Event):
-        import time
 
         from src.config.settings import DEATHLOCK_CHECKING_TIME
         from src.shared import deathlocks_checking_event, get_all_shm_locks
@@ -45,8 +43,6 @@ if DEATHLOCKS_CHECKING:
             task_done.set()
 
 
-
-
 def _setup_logging():
     import logging
     from logging.handlers import TimedRotatingFileHandler
@@ -74,7 +70,6 @@ def _setup_logging():
 logger = _setup_logging()
 
 
-
 def engine_target(ready_event=None):
     logger.info("Starting Engine Service")
     server_socket = socket.socket(ENGINE_SOCKET_FAMILY, ENGINE_SOCKET_KIND)
@@ -88,15 +83,12 @@ def engine_target(ready_event=None):
     server_socket.listen(128)
     logger.info("Listening at: %s", str(address))
     if DEATHLOCKS_CHECKING:
-        from src.shared import deathlocks_checking_event
-        check_event = Event()
-        cancel_event = Event()
-        task_done = Event()
-        stop_event = Event()
-        thr = Thread(target=_deathlocks_checking, args=(stop_event, check_event, cancel_event, task_done))
-        thr.start()
-        import time
-        time.sleep(0.1)
+
+        check_event: Event = None
+        cancel_event: Event = None
+        task_done: Event = None
+        stop_event: Event = None
+        thr: Thread = None
 
     # NOTE:
     # Use only one worker process for the engine.
@@ -134,15 +126,32 @@ def engine_target(ready_event=None):
                         "Engine worker %d terminated by signal %d", child_pid, term_signal)
 
                     if DEATHLOCKS_CHECKING:
+                        from src.shared import deathlocks_checking_event
                         deathlocks_checking_event.set()
-                        if not check_event.is_set():
+
+                        if thr is None:
+                            check_event = Event()
+                            cancel_event = Event()
+                            task_done = Event()
+                            stop_event = Event()
+
                             check_event.set()
+                            thr = Thread(target=_deathlocks_checking, args=(
+                                stop_event, check_event, cancel_event, task_done))
+                            thr.start()
+                            import time
+                            time.sleep(1)
+                            del time
                         else:
-                            cancel_event.set()
-                            task_done.wait()
-                            cancel_event.clear()
-                            task_done.clear()
-                            check_event.set()
+                            if not check_event.is_set():
+                                check_event.set()
+                            else:
+                                cancel_event.set()
+                                task_done.wait()
+                                cancel_event.clear()
+                                task_done.clear()
+                                check_event.set()
+
                     # Going to create new worker
                     continue
                 else:
@@ -166,8 +175,6 @@ def engine_target(ready_event=None):
     except ChildProcessError:
         pass
 
-
-
     logger.info("Shutting down: Master")
     server_socket.close()
     if isinstance(address, str) and os.path.exists(address):
@@ -176,7 +183,7 @@ def engine_target(ready_event=None):
         except Exception:
             pass
 
-    if DEATHLOCKS_CHECKING:
+    if DEATHLOCKS_CHECKING and thr is not None:
         logger.info("Closing deathlocks checking...")
         if check_event.is_set():
             task_done.wait()
