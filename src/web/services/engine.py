@@ -16,8 +16,7 @@ from src.config.engine import ShmTensorSchema
 from src.libs.socket_protocol.client.exceptions import (RequestException,
                                                         StatusCodeError)
 from src.libs.socket_protocol.client.requests import request
-from src.shared import (get_shm_lock,
-                        overwrite_counter)
+from src.shared import get_shm_lock, overwrite_counter
 from src.web.core.logging import logger
 
 from .resources import get_shms

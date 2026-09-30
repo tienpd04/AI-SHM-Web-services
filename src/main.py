@@ -16,11 +16,6 @@ def _engine_process(ready_event=None):
     engine_target(ready_event=ready_event)
 
 
-def _resources_process(resources: list[tuple[str, ...]], ready_event=None):
-    from src.resources.target import resources_target
-    resources_target(resources=resources, ready_event=ready_event)
-
-
 _logger = None
 
 
@@ -98,16 +93,11 @@ def _load_env():
         dotenv.load_dotenv(env_file)
 
 
-def _set_rs_api_key():
-    import secrets
-    os.environ["RESOURCES_API_KEY"] = secrets.token_hex(16)
 
 
 def main():
 
     _load_env()
-
-    _set_rs_api_key()
 
     global _logger
     _logger = _setup_logging()
@@ -115,46 +105,11 @@ def main():
     shm_list, name_tuples = _create_resources()
 
     from src import shared
-    shared.initialize({shm.name for shm in shm_list})
+    shared.initialize(name_tuples)
 
     from multiprocessing import Event, Process
 
-    _logger.info("Starting Resources, Engine and Web Application")
-
-    _logger.info("Starting Resources Application")
-
-    rs_ready_event = Event()
-    resources_p = Process(target=_resources_process,
-                          args=(name_tuples, rs_ready_event))
-    resources_p.start()
-
-    rs_start_success = True
-
-    # Wait for the resources process to signal that it's ready
-    # Wait interval 5 seconds for quick exit if resources failed to start.
-    for _ in range(6):
-        if not rs_ready_event.wait(timeout=5):
-            if not resources_p.is_alive():
-                rs_start_success = False
-                break
-        else:
-            break
-
-    if not rs_ready_event.is_set() and resources_p.is_alive():
-        # Timeout 30 seconds
-        _logger.error(
-            "Resources process taking too long time for ready, going to terminate it.")
-        resources_p.terminate()
-        resources_p.join()
-        rs_start_success = False
-
-    if not rs_start_success:
-        _logger.error("Resources process failed to start.")
-        _cleanup_resources(shm_list)
-        sys.exit(1)
-
-    _logger.info("Resources process start success with PID: %d",
-                 resources_p.pid)
+    _logger.info("Starting Engine and Web Application")
 
     _logger.info("Starting Engine Application")
     engine_ready_event = Event()
@@ -182,9 +137,8 @@ def main():
 
     if not engine_start_success:
         _logger.error("Engine process failed to start.")
-        resources_p.terminate()
-        resources_p.join()
         _cleanup_resources(shm_list)
+        shared.terminate()
         sys.exit(1)
 
     _logger.info("Engine process start success with PID: %d", engine_p.pid)
@@ -208,9 +162,7 @@ def main():
     engine_p.terminate()
     engine_p.join()
 
-    _logger.info("Terminate Resources Application")
-    resources_p.terminate()
-    resources_p.join()
+    shared.terminate()
 
     _logger.info("Cleanup shared resources")
     _cleanup_resources(shm_list)

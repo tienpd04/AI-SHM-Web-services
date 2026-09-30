@@ -8,7 +8,6 @@ from src.config.engine import (ENGINE_SOCKET_ADDRESS, ENGINE_SOCKET_FAMILY,
 from src.config.settings import LOGS_DIR, NUM_LOG_BACKUP
 
 
-
 def _setup_logging():
     import logging
     from logging.handlers import TimedRotatingFileHandler

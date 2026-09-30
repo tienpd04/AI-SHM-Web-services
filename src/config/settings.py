@@ -66,8 +66,6 @@ RESOURCE_SHM_INPUT_SIZE_MB: int = _getenv("RESOURCE_SHM_INPUT_SIZE_MB", 32, cast
 # Calculate the maximum value among the OUTPUT data sizes (in Megabytes) of all engine tasks, then set this value.
 RESOURCE_SHM_OUTPUT_SIZE_MB: int = _getenv("RESOURCE_SHM_OUTPUT_SIZE_MB", 32, cast=int)
 
-RESOURCES_UNIX_SOCKET_PATH: str = _getenv("RESOURCES_UNIX_SOCKET_PATH", default="/run/appuser/resources.sock", required=True)
-
 RESOURCES_MANAGER_LOG_INTERVAL: int = _getenv("RESOURCES_MANAGER_LOG_INTERVAL", 3600, cast=int)
 
 
