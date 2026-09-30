@@ -27,11 +27,11 @@ class _OverwrittenCounter(object):
         return self._cnt.get_value()
 
 
-_inited = False
+_isinitialized = False
 
 _shm_locks: dict[str, LockT] = {}
 
-overwritten_counter = _OverwrittenCounter()
+overwrite_counter = _OverwrittenCounter()
 
 deathlocks_checking_event = Event()
 
@@ -39,8 +39,8 @@ deathlocks_checking_event = Event()
 def initialize(shm_names: set[str]):
     """For use only by the main process
     """
-    global _inited
-    assert _inited is False, f"{__name__}.initialize called too many times"
+    global _isinitialized
+    assert _isinitialized is False, f"{__name__}.initialize called too many times"
     if not isinstance(shm_names, (set, frozenset)):
         raise ValueError("'shm_names' must be a set")
 
@@ -55,7 +55,7 @@ def initialize(shm_names: set[str]):
         _shm_locks.clear()
         raise
 
-    _inited = True
+    _isinitialized = True
 
 
 def get_shm_lock(name: str) -> LockT:
@@ -72,17 +72,17 @@ def get_all_shm_locks():
 # @contextlib.contextmanager
 # def shmreadwritecontext(shm_name: str):
 #     lock = _shm_locks[shm_name]
-#     if lock.acquire(False):
-#         try:
-#             yield
-#         finally:
-#             lock.release()
-#     else:
+#     if not lock.acquire(False):
 #         raise RuntimeError(f"Too many processes or threads access SHM '{shm_name}' simultaneously.")
+#     try:
+#         yield
+#     finally:
+#         lock.release()
+
 __all__ = [
     "initialize",
     'get_shm_lock',
     'get_all_shm_locks',
-    'overwritten_counter',
+    'overwrite_counter',
     'deathlocks_checking_event'
 ]
