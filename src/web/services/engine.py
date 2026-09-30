@@ -17,7 +17,7 @@ from src.libs.socket_protocol.client.exceptions import (RequestException,
                                                         StatusCodeError)
 from src.libs.socket_protocol.client.requests import request
 from src.shared import (get_shm_lock,
-                        overwritten_counter)
+                        overwrite_counter)
 from src.web.core.logging import logger
 
 from .resources import get_shms
@@ -126,7 +126,7 @@ def _load_outputs(response_dict: dict, output_shm: SharedMemory) -> list[NDArray
                 "Too many processes or threads accessing SHM simultaneously.")
 
         if header_hex != shm_nonce:
-            overwritten_counter.increase()
+            overwrite_counter.increase()
             raise RequestException(
                 "Invalid output SHM header. The output SHM may be overwritten")
 

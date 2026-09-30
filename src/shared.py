@@ -31,7 +31,7 @@ _inited = False
 
 _shm_locks: dict[str, LockT] = {}
 
-overwritten_counter = _OverwrittenCounter()
+overwrite_counter = _OverwrittenCounter()
 
 
 def initialize(shm_names: set[str]):
@@ -66,20 +66,9 @@ def get_all_shm_locks():
     return _shm_locks.copy()
 
 
-# import contextlib
-# @contextlib.contextmanager
-# def shmreadwritecontext(shm_name: str):
-#     lock = _shm_locks[shm_name]
-#     if lock.acquire(False):
-#         try:
-#             yield
-#         finally:
-#             lock.release()
-#     else:
-#         raise RuntimeError(f"Too many processes or threads access SHM '{shm_name}' simultaneously.")
 __all__ = [
     "initialize",
     'get_shm_lock',
     'get_all_shm_locks',
-    'overwritten_counter',
+    'overwrite_counter',
 ]
