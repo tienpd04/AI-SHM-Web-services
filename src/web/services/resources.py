@@ -2,7 +2,7 @@
 import os
 from multiprocessing.shared_memory import SharedMemory
 
-from src.shared import current_using_shms, worker_get_shm_name_set
+from src.shared import worker_get_shm_names_set, current_using_shms
 from src.web.core.logging import logger
 
 _shms: tuple[SharedMemory, ...] = ()
@@ -28,11 +28,10 @@ def _take_resources() -> bool:
         # taken
         return True
     try:
-        ret = worker_get_shm_name_set()
+        ret = worker_get_shm_names_set()
         if ret is None:
             current_using = current_using_shms()
             logger.error("Failed to take resources, current using resources: %s", current_using)
-
             return False
         names, is_new = ret
         shms = [SharedMemory(name) for name in names]

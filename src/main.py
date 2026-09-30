@@ -162,7 +162,7 @@ def main():
     engine_p.terminate()
     engine_p.join()
 
-    shared.terminate()
+    shared.cleanup()
 
     _logger.info("Cleanup shared resources")
     _cleanup_resources(shm_list)

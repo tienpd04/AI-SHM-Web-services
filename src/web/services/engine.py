@@ -178,7 +178,7 @@ def _log_engine_tasks_interval():
 
     # if total:
     if total and total % 100 == 0:
-        logger.info("[Interval Log] Engine tasks for web application worker: total %d, shm %d, file %d",
+        logger.info("[Interval Log] Engine tasks for web application worker [%d]: total %d, shm %d, file %d", os.getpid(),
                     total, _task_counter.shm, _task_counter.file)
 
 
