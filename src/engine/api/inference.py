@@ -12,10 +12,13 @@ if TYPE_CHECKING:
 import numpy as np
 
 from src.config.engine import SHM_HEADER_SIZE, STORAGE_DIR, ShmTensorSchema
-from src.libs.socket_protocol.server import (ASCIIJsonResponse, JSONResponse,
-                                             PlainTextResponse, Request,
-                                             Response, SocketApplicaltion)
-from src.shared import get_shm_lock, overwrite_counter
+from src.libs.socket_protocol.server import (ASCIIJsonResponse,
+                                             ASCIIPlainTextResponse,
+                                             JSONResponse, PlainTextResponse,
+                                             Request, Response,
+                                             SocketApplicaltion)
+from src.shared import get_shm_lock
+from src.shared import is_in_deathlocks_checking as is_in_dl_checking
 
 from ..core.engine import Engine, InvalidModelName
 from ..core.shm import get_shm
@@ -27,6 +30,12 @@ if STORAGE_DIR.isascii():
     FileModeResponse: TypeAlias = ASCIIJsonResponse
 else:
     FileModeResponse: TypeAlias = JSONResponse
+
+class _OverwriteError(Exception):
+    pass
+
+class _TaskCancelledByDLChecking(Exception):
+    pass
 
 
 def _load_shm_input_tensor(tensor_info: dict, shm_nonce: str) -> tuple[NDArray, SharedMemory]:
@@ -50,12 +59,14 @@ def _load_shm_input_tensor(tensor_info: dict, shm_nonce: str) -> tuple[NDArray, 
         finally:
             lock.release()
     else:
-        raise RuntimeError(
-            "Too many processes or threads accessing SHM simultaneously.")
+        if not is_in_dl_checking():
+            raise RuntimeError(
+                "Too many processes or threads accessing SHM simultaneously.")
+        else:
+            raise _TaskCancelledByDLChecking()
 
     if header_hex != shm_nonce:
-        overwrite_counter.increase()
-        raise ValueError("Invalid SHM header. The SHM may be overwritten.")
+        raise _OverwriteError()
 
     return tensor, shm
 
@@ -107,6 +118,9 @@ def inference(req: Request) -> Response:
     Return:
     JsonResponse if success
     PlainTextResponse with message if have error
+    Status Code:
+        200: Success
+
     '''
     try:
         data = req.json()
@@ -122,6 +136,8 @@ def inference(req: Request) -> Response:
     # t1 = time.time()
     try:
         if mode == 'shm':
+            if is_in_dl_checking():
+                raise _TaskCancelledByDLChecking()
             shm_nonce = data.get('shm_nonce')
             tensor_info = data.get('input_tensor')
             input_tensor, _ = _load_shm_input_tensor(tensor_info, shm_nonce)
@@ -129,6 +145,12 @@ def inference(req: Request) -> Response:
         else:
             filepath = data.get('filepath')
             input_tensor = np.load(filepath)
+
+    except _OverwriteError:
+        return ASCIIPlainTextResponse("Invalid SHM header. The SHM may be overwritten.", 499)
+
+    except _TaskCancelledByDLChecking:
+        return ASCIIPlainTextResponse("SHM task cancelled while engine mater checking deathlocks. Please retry with 'file' mode", 488)
     except Exception as e:
         return PlainTextResponse(f"Could not load input tensor: {str(e)}", 422)
 

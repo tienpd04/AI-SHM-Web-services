@@ -13,7 +13,7 @@ def _web_process():
 
 def _engine_process(ready_event=None):
     from src.engine_master import engine_target
-    engine_target(ready_event=ready_event)
+    engine_target(ready_event)
 
 
 _logger = None
@@ -103,7 +103,6 @@ def main():
     _logger = _setup_logging()
 
     shm_list, name_tuples = _create_resources()
-
     from src import shared
     shared.initialize(name_tuples)
 
@@ -138,7 +137,7 @@ def main():
     if not engine_start_success:
         _logger.error("Engine process failed to start.")
         _cleanup_resources(shm_list)
-        shared.terminate()
+        shared.cleanup()
         sys.exit(1)
 
     _logger.info("Engine process start success with PID: %d", engine_p.pid)
@@ -162,10 +161,11 @@ def main():
     engine_p.terminate()
     engine_p.join()
 
-    shared.cleanup()
+
 
     _logger.info("Cleanup shared resources")
     _cleanup_resources(shm_list)
+    shared.cleanup()
     _logger.info("Program terminated successfully.")
 
 

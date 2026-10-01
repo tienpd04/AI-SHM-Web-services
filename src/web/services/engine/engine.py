@@ -16,13 +16,14 @@ from src.config.engine import ShmTensorSchema
 from src.libs.socket_protocol.client.exceptions import (RequestException,
                                                         StatusCodeError)
 from src.libs.socket_protocol.client.requests import request
-from src.shared import get_shm_lock, overwrite_counter
+from src.shared import get_overwrite_counter, get_shm_lock
+from src.shared import is_in_deathlocks_checking as is_in_dl_checking
 from src.web.core.logging import logger
 
-from .resources import get_shms
+from ._resources import get_shms
 
 
-def engine_health_check(raise_exp=True, timeout=10) -> bool:
+def engine_health_check(raise_exp=True, timeout=20) -> bool:
     try:
         res = request(ADDRESS, SocketAPI.HEALTH_CHECK,
                       address_family=SOCKET_FAMILY, socket_kind=SOCKET_KIND, timeout=timeout)
@@ -125,7 +126,7 @@ def _load_outputs(response_dict: dict, output_shm: SharedMemory) -> list[NDArray
                 "Too many processes or threads accessing SHM simultaneously.")
 
         if header_hex != shm_nonce:
-            overwrite_counter.increase()
+            get_overwrite_counter().increase()
             raise RequestException(
                 "Invalid output SHM header. The output SHM may be overwritten")
 
@@ -180,7 +181,7 @@ def _log_engine_tasks_interval():
     if total and total % 100 == 0:
         logger.info("[Interval Log] Engine tasks for web application worker [%d]: total %d, shm %d, file %d", os.getpid(),
                     total, _task_counter.shm, _task_counter.file)
-
+# import threading
 
 def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> list[NDArray]:
     """Request inference to engine via shared memory or file
@@ -188,8 +189,9 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
     NOTE:
         Do not use this function in multi-threading. The SHM can be overwritten.
     """
+    # assert threading.current_thread() is threading.main_thread()
 
-    using_shm = True
+    using_shm = not is_in_dl_checking()
     if using_shm:
         shms = get_shms()
         if shms:
@@ -202,9 +204,71 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
         else:
             using_shm = False
 
+    if using_shm:
+        for _ in range(1):
+            nonce = secrets.token_bytes(SHM_HEADER_SIZE)
+            buf = input_shm.buf
+            shm_tensor = np.ndarray(shape=input_tensor.shape,
+                                    dtype=input_tensor.dtype, buffer=buf[SHM_HEADER_SIZE:])
+            lock = get_shm_lock(input_shm.name)
+
+            if lock.acquire(False):
+                # Safety lock: just copy data, do not create any big object and do not use unfamiliar module
+                # Ensuring that deathlocks never occur.
+                try:
+                    buf[:SHM_HEADER_SIZE] = nonce
+                    shm_tensor[:] = input_tensor[:]
+                finally:
+                    lock.release()
+            else:
+                if not is_in_dl_checking():
+                    raise RuntimeError(
+                        "Too many processes or threads accessing SHM simultaneously.")
+                else:
+                    # SHM task cancelled by deathlocks checking. Let's retry with 'file' mode
+                    using_shm = False
+                    break
+
+            tensor_content = ShmTensorSchema(
+                shape=input_tensor.shape, dtype=input_tensor.dtype.name, shm=input_shm.name, buf_from=SHM_HEADER_SIZE).original_dict()
+
+            content = {'model_name': model_name,
+                       'input_tensor': tensor_content, 'mode': 'shm', 'output_shm': output_shm.name, 'shm_nonce': nonce.hex()}
+
+            # Current setting of all SHM name is 'ascii' charset. It's ok for ensure_ascii=True
+            res = request(ADDRESS, SocketAPI.INFERENCE, data=content,
+                          address_family=SOCKET_FAMILY, socket_kind=SOCKET_KIND, ensure_ascii=True, timeout=timeout)
+            try:
+                res.raise_for_status()
+            except StatusCodeError as e:
+
+                if res.status_code == 499:
+                    # Overwrite detected
+                    get_overwrite_counter().increase()
+
+                elif res.status_code == 488:
+                    # SHM task cancelled by deathlocks checking. Let's retry with 'file' mode
+                    using_shm = False
+                    break
+
+                try:
+                    msg = res.text
+                except Exception:
+                    msg = ''
+                raise RequestException(
+                    f"Request failed with status code {res.status_code}: {msg}") from e
+
+
+            response_dict = res.json()
+            assert isinstance(
+                response_dict, dict), "Content return must be a dict"
+            outputs = _load_outputs(response_dict, output_shm)
+            _task_counter.increase_shm()
+            _log_engine_tasks_interval()
+            return outputs
+
     if not using_shm:
-        _task_counter.increase_file()
-        _log_engine_tasks_interval()
+
         file_path = os.path.join(STORAGE_DIR, secrets.token_hex(16) + ".npy")
         np.save(file_path, input_tensor)
         try:
@@ -214,48 +278,6 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
                 os.remove(file_path)
             except Exception:
                 pass
-        return ret
-
-    else:
-        _task_counter.increase_shm()
+        _task_counter.increase_file()
         _log_engine_tasks_interval()
-        nonce = secrets.token_bytes(SHM_HEADER_SIZE)
-        buf = input_shm.buf
-        shm_tensor = np.ndarray(shape=input_tensor.shape,
-                                dtype=input_tensor.dtype, buffer=buf[SHM_HEADER_SIZE:])
-        lock = get_shm_lock(input_shm.name)
-
-        if lock.acquire(False):
-            # Safety lock: just copy data, do not create any big object and do not use unfamiliar module
-            # Ensuring that deathlocks never occur.
-            try:
-                buf[:SHM_HEADER_SIZE] = nonce
-                shm_tensor[:] = input_tensor[:]
-            finally:
-                lock.release()
-        else:
-            raise RuntimeError(
-                "Too many processes or threads accessing SHM simultaneously.")
-
-        tensor_content = ShmTensorSchema(
-            shape=input_tensor.shape, dtype=input_tensor.dtype.name, shm=input_shm.name, buf_from=SHM_HEADER_SIZE).original_dict()
-
-        content = {'model_name': model_name,
-                   'input_tensor': tensor_content, 'mode': 'shm', 'output_shm': output_shm.name, 'shm_nonce': nonce.hex()}
-
-        res = request(ADDRESS, SocketAPI.INFERENCE, data=content,
-                      address_family=SOCKET_FAMILY, socket_kind=SOCKET_KIND, ensure_ascii=True, timeout=timeout)
-        try:
-            res.raise_for_status()
-        except StatusCodeError as e:
-            try:
-                msg = res.text
-            except Exception:
-                msg = ''
-            raise RequestException(
-                f"Request failed with status code {res.status_code}: {msg}") from e
-        response_dict = res.json()
-        assert isinstance(
-            response_dict, dict), "Content return must be a dict"
-        outputs = _load_outputs(response_dict, output_shm)
-        return outputs
+        return ret

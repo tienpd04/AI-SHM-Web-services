@@ -5,7 +5,11 @@ import sys
 
 from src.config.engine import (ENGINE_SOCKET_ADDRESS, ENGINE_SOCKET_FAMILY,
                                ENGINE_SOCKET_KIND)
-from src.config.settings import LOGS_DIR, NUM_LOG_BACKUP
+from src.config.settings import DEATHLOCKS_CHECKING, LOGS_DIR, NUM_LOG_BACKUP
+
+# This is master module, just create server and worker
+# Do not import the worker module (or any objects from the worker module) as global variables.
+
 
 
 def _setup_logging():
@@ -32,11 +36,70 @@ def _setup_logging():
     return logger
 
 
-logger = _setup_logging()
+logger = None
 
+
+if DEATHLOCKS_CHECKING:
+    import time
+    from typing import TYPE_CHECKING, cast
+
+    from src.config.settings import DEATHLOCK_CHECKING_TIME
+    if TYPE_CHECKING:
+        from multiprocessing.synchronize import Lock as LockT
+        from threading import Event
+
+        from src.shared import _SharedFlag
+
+
+
+    def _deathlocks_checking(cancel_event: 'Event', shm_locks: dict[str, 'LockT'], flag: '_SharedFlag'):
+
+        flag.set()
+        logger.info("Deathlocks checking start")
+
+        for shm_name, lock in shm_locks.items():
+
+            remaining_time = DEATHLOCK_CHECKING_TIME
+            while remaining_time > 0:
+                # Doesn't need to be perfectly precise;
+                if lock.acquire(True, timeout=1):
+                    try:
+                        lock.release()
+                    except ValueError:
+                        pass
+                    break
+
+                if cancel_event.is_set():
+                    break
+
+                remaining_time -= 1
+
+            if remaining_time <= 0:
+                # timeout
+                try:
+                    lock.release()
+                except ValueError:
+                    pass
+                else:
+                    logger.warning(
+                            "A deadlock was detected for SHM '%s'. It was automatically released after the %.2f seconds timeout expired.", shm_name, DEATHLOCK_CHECKING_TIME)
+
+            if cancel_event.is_set():
+                break
+
+
+        # Sleep enough time for execute 'src.shared.is_in_deathlocks_checking' function that called by web application worker or engine worker after they aquired a lock failed
+        time.sleep(0.1)
+        if not cancel_event.is_set():
+            flag.clear()
+            logger.info("Deathlocks checking done")
+        else:
+            logger.info("Deathlocks checking cancelled")
 
 
 def engine_target(ready_event=None):
+    global logger
+    logger = _setup_logging()
     logger.info("Starting Engine Service")
     server_socket = socket.socket(ENGINE_SOCKET_FAMILY, ENGINE_SOCKET_KIND)
     address = ENGINE_SOCKET_ADDRESS
@@ -48,6 +111,10 @@ def engine_target(ready_event=None):
     server_socket.bind(address)
     server_socket.listen(128)
     logger.info("Listening at: %s", str(address))
+
+    if DEATHLOCKS_CHECKING:
+        cancel_event: Event = None
+        thr = None
 
     # NOTE:
     # Use only one worker process for the engine.
@@ -84,6 +151,25 @@ def engine_target(ready_event=None):
                     logger.error(
                         "Engine worker %d terminated by signal %d", child_pid, term_signal)
 
+                    if DEATHLOCKS_CHECKING:
+                        import threading
+
+                        from src import shared
+                        if thr is not None:
+                            cast(threading.Event, cancel_event).set()
+                            cast(threading.Thread, thr).join()
+                            cast(threading.Event, cancel_event).clear()
+
+                        else:
+                            cancel_event = threading.Event()
+
+                        thr = threading.Thread(target=_deathlocks_checking, args=(cancel_event, shared.get_all_shm_locks(), shared.get_deathlock_checking_flag()))
+                        thr.start()
+                        del threading, shared
+                        # Need to sleep a time before create new process after create a thread.
+                        time.sleep(1)
+
+
                     # Going to create new worker
                     continue
                 else:
@@ -116,6 +202,10 @@ def engine_target(ready_event=None):
             os.remove(address)
         except Exception:
             pass
+
+    if DEATHLOCKS_CHECKING and thr is not None:
+        cancel_event.set()
+        thr.join()
 
 
 if __name__ == "__main__":
