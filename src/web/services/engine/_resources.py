@@ -1,12 +1,13 @@
 
 import os
+import threading
 from multiprocessing.shared_memory import SharedMemory
 
 from src.config.settings import DEATHLOCKS_CHECKING
-from src.shared import current_using_shms, worker_get_shm_names_set
+from src.shared import current_using_shms, worker_take_shm_names_set
 from src.web.core.logging import logger
 
-_shms: tuple[SharedMemory, ...] = ()
+_worker_shms: tuple[SharedMemory, ...] = None
 
 _skip_first_time = False
 
@@ -19,7 +20,8 @@ if DEATHLOCKS_CHECKING:
     # _dl_chk_thread = None
 
     def _deathlocks_checking(shm_names: list[str]):
-        logger.info("Deathlocks checking start after reuse shared memory from a teminated worker process")
+        logger.info(
+            "Deathlocks checking start after reuse shared memory from a teminated worker process")
         _dl_checking_event.set()
 
         for shm_name in shm_names:
@@ -38,23 +40,23 @@ if DEATHLOCKS_CHECKING:
         logger.info("Deathlocks checking complete")
 
     def _background_deathlocks_checking(shm_names: list[str]):
-        from threading import Event, Thread
+
         global _dl_checking_event
         if _dl_checking_event is None:
-            _dl_checking_event = Event()
+            _dl_checking_event = threading.Event()
 
         _dl_checking_event.set()
-        t = Thread(target=_deathlocks_checking, args=(shm_names,))
+        t = threading.Thread(target=_deathlocks_checking, args=(shm_names,))
         t.start()
 
 
 def _take_resources() -> bool:
-    global _shms
-    if _shms:
+    global _worker_shms
+    if _worker_shms:
         # taken
-        return True
+        return _worker_shms
     try:
-        ret = worker_get_shm_names_set()
+        ret = worker_take_shm_names_set()
         if ret is None:
             current_using = current_using_shms()
             logger.error(
@@ -63,7 +65,7 @@ def _take_resources() -> bool:
         names, is_new = ret
         assert len(names) > 0, "Required atleast one SHM"
         shms = [SharedMemory(name) for name in names]
-        _shms = tuple(shms)
+        _worker_shms = tuple(shms)
         if not is_new:
             global _skip_first_time
             _skip_first_time = True
@@ -76,31 +78,36 @@ def _take_resources() -> bool:
         return False
 
     logger.info("Taken resources for worker PID [%d]: %s",
-                os.getpid(), _shms)
+                os.getpid(), _worker_shms)
     return True
 
 
-def get_shms() -> tuple[SharedMemory, ...]:
-    """For use only by the engine service
-    Do not use this for other service. The Shared Memory can be overwritten.
-    Do not use this in multi-threading. The Shared Memory can be overwritten.
+NO_REASON, THREADING_REASON, SKIP_FIRST_TIME_REASON, DL_CHECKING_REASON = list(range(4))
+
+def using_worker_shms() -> tuple[tuple[SharedMemory, ...] | None, int]:
+    """For use only by the engine service.
+    Supported only for the main thread.
     """
-    global _skip_first_time
-    if not _shms:
+    if threading.current_thread() is not threading.main_thread():
+        logger.warning(
+            "Skip using worker resources for thread [%d], it's supported only for the main thread", threading.get_ident())
+        # Notify the engine using 'file' mode because the current thread is not main thread.
+        return None, THREADING_REASON
+
+    if not _worker_shms:
         _take_resources()
 
     if _skip_first_time:
-        _skip_first_time = False
         # Notify the engine using 'file' mode at this time because the set of SHMs is taken from a terminated worker process
-        return ()
+        return None, SKIP_FIRST_TIME_REASON
 
     if _dl_checking_event is not None and _dl_checking_event.is_set():
-        # Notify the engine using 'file' mode while deatlocks checking is still running, it means the engine does not using any lock.
-        return ()
+        # Notify the engine using 'file' mode while deatlocks checking is still running, it means the engine does not using any shm lock.
+        return None, DL_CHECKING_REASON
 
-    return _shms
+    return _worker_shms, NO_REASON
 
+def skip_first_time_complete():
+    global _skip_first_time
+    _skip_first_time = False
 
-__all__ = [
-    "get_shms"
-]

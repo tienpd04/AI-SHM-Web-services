@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from src.config.settings import RESOURCES_MANAGER_LOG_INTERVAL
-from src.shared import current_using_shms, get_overwrite_counter
+from src.shared import current_using_shms, current_overwrite_counter
 from src.web.core.logging import logger, rq_log_error, rq_log_info
 from src.web.services.engine import engine_health_check
 
@@ -33,7 +33,7 @@ async def health_check(request: Request):
             logger.info(
                 "[Interval Log] Current using resources: %s", current_using_shms())
             logger.info("[Interval Log] Number of times shared memory was overwritten: %d",
-                        get_overwrite_counter().get_value())
+                        current_overwrite_counter().get_value())
         except Exception as e:
             logger.warning("Error while logging current resources: %s", {e})
 

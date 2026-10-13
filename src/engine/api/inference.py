@@ -11,7 +11,9 @@ if TYPE_CHECKING:
 
 import numpy as np
 
-from src.config.engine import SHM_HEADER_SIZE, STORAGE_DIR, ShmTensorSchema
+from src.config.constants import SHM_HEADER_SIZE
+from src.config.engine_api import (OVERWRITE_STT_CODE, SHM_CANCELLED_STT_CODE,
+                                   STORAGE_DIR, ShmTensorSchema)
 from src.libs.socket_protocol.server import (ASCIIJsonResponse,
                                              ASCIIPlainTextResponse,
                                              JSONResponse, PlainTextResponse,
@@ -31,17 +33,19 @@ if STORAGE_DIR.isascii():
 else:
     FileModeResponse: TypeAlias = JSONResponse
 
+
 class _OverwriteError(Exception):
     pass
 
-class _TaskCancelledByDLChecking(Exception):
+
+class _WaitForShmDLChecking(Exception):
     pass
 
 
 def _load_shm_input_tensor(tensor_info: dict, shm_nonce: str) -> tuple[NDArray, SharedMemory]:
 
     tensor_schema = ShmTensorSchema(**tensor_info)
-    shm = get_shm(tensor_schema.shm)
+    shm = get_shm(tensor_schema.shm_name)
     buf = shm.buf
 
     tensor = np.ndarray(shape=tensor_schema.shape,
@@ -63,7 +67,7 @@ def _load_shm_input_tensor(tensor_info: dict, shm_nonce: str) -> tuple[NDArray, 
             raise RuntimeError(
                 "Too many processes or threads accessing SHM simultaneously.")
         else:
-            raise _TaskCancelledByDLChecking()
+            raise _WaitForShmDLChecking()
 
     if header_hex != shm_nonce:
         raise _OverwriteError()
@@ -83,7 +87,7 @@ def _bind_shm_outputs(outputs: list[NDArray], shm: SharedMemory) -> tuple[list[S
                                 dtype=tensor.dtype, buffer=shm_buff[buf_from:])
 
         schema = ShmTensorSchema(
-            shape=tensor.shape, dtype=tensor.dtype.name, shm=shm.name, buf_from=buf_from)
+            shape=tensor.shape, dtype=tensor.dtype.name, shm_name=shm.name, buf_from=buf_from)
 
         tensor_schemas.append(schema)
         shm_tensors.append(shm_tensor)
@@ -105,6 +109,8 @@ def _bind_shm_outputs(outputs: list[NDArray], shm: SharedMemory) -> tuple[list[S
         finally:
             lock.release()
     else:
+        if is_in_dl_checking():
+            raise _WaitForShmDLChecking()
         raise RuntimeError(
             "Too many processes or threads accessing SHM simultaneously.")
 
@@ -137,7 +143,7 @@ def inference(req: Request) -> Response:
     try:
         if mode == 'shm':
             if is_in_dl_checking():
-                raise _TaskCancelledByDLChecking()
+                raise _WaitForShmDLChecking()
             shm_nonce = data.get('shm_nonce')
             tensor_info = data.get('input_tensor')
             input_tensor, _ = _load_shm_input_tensor(tensor_info, shm_nonce)
@@ -147,10 +153,10 @@ def inference(req: Request) -> Response:
             input_tensor = np.load(filepath)
 
     except _OverwriteError:
-        return ASCIIPlainTextResponse("Invalid SHM header. The SHM may be overwritten.", 499)
+        return ASCIIPlainTextResponse("Invalid SHM header. The SHM may be overwritten.", OVERWRITE_STT_CODE)
 
-    except _TaskCancelledByDLChecking:
-        return ASCIIPlainTextResponse("SHM task cancelled while engine mater checking deathlocks. Please retry with 'file' mode", 488)
+    except _WaitForShmDLChecking:
+        return ASCIIPlainTextResponse("SHM task cancelled while engine master checking deathlocks. Please retry with 'file' mode", SHM_CANCELLED_STT_CODE)
     except Exception as e:
         return PlainTextResponse(f"Could not load input tensor: {str(e)}", 422)
 
@@ -194,15 +200,18 @@ def inference(req: Request) -> Response:
         try:
             output_schemas, shm_nonce = _bind_shm_outputs(
                 outputs=outputs, shm=output_shm)
+        except _WaitForShmDLChecking:
+            output_mode = 'file'
         except Exception as e:
             logger.error("Could not bind output to shm: shm name '%s', shm size %d. Exception: %s",
-                         output_shm.name, output_shm.size, str(e))
+                        output_shm.name, output_shm.size, str(e))
             return PlainTextResponse("Could not bind output to shm: shm name '{}', shm size {}. Exception: {}".format(output_shm.name, output_shm.size, str(e)), 500)
+        else:
+            content = {'mode': output_mode, 'outputs': [
+                s.original_dict() for s in output_schemas], 'shm_nonce': shm_nonce.hex()}
+            return ASCIIJsonResponse(content)
 
-        content = {'mode': output_mode, 'outputs': [
-            s.original_dict() for s in output_schemas], 'shm_nonce': shm_nonce.hex()}
-        return ASCIIJsonResponse(content)
-    else:
+    if output_mode == 'file':
         filepath = os.path.join(STORAGE_DIR, secrets.token_hex(16) + '.pkl')
         with open(filepath, 'wb') as f:
             pickle.dump(outputs, f)

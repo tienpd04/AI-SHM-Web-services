@@ -13,7 +13,10 @@ ERROR = logging.ERROR
 
 def setup_logging():
     log_level = INFO
-    logger = logging.getLogger("fastapi")
+    from src.config.constants import FASTAPI_LOGGER_NAME
+    from src.config.settings import (LOGS_DIR,
+                                     NUM_LOG_BACKUP)
+    logger = logging.getLogger(FASTAPI_LOGGER_NAME)
     logger.setLevel(log_level)
 
     formatter = logging.Formatter(
@@ -26,9 +29,9 @@ def setup_logging():
 
     from logging.handlers import TimedRotatingFileHandler
 
-    from src.config.settings import LOGS_DIR, NUM_LOG_BACKUP
+
     file_handler = TimedRotatingFileHandler(
-        os.path.join(LOGS_DIR, "fastapi.log"), when="MIDNIGHT", backupCount=NUM_LOG_BACKUP)
+        os.path.join(LOGS_DIR, f"{FASTAPI_LOGGER_NAME}.log"), when="MIDNIGHT", backupCount=NUM_LOG_BACKUP)
     file_handler.setLevel(log_level)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)

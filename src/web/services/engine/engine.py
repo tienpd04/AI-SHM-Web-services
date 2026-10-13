@@ -7,20 +7,24 @@ from typing import cast
 import numpy as np
 from numpy.typing import NDArray
 
-from src.config.engine import ENGINE_SOCKET_ADDRESS as ADDRESS
-from src.config.engine import ENGINE_SOCKET_FAMILY as SOCKET_FAMILY
-from src.config.engine import ENGINE_SOCKET_KIND as SOCKET_KIND
-from src.config.engine import SHM_HEADER_SIZE, STORAGE_DIR
-from src.config.engine import EngineSocketAPI as SocketAPI
-from src.config.engine import ShmTensorSchema
-from src.libs.socket_protocol.client.exceptions import (RequestException,
+from src.config.constants import SHM_HEADER_SIZE
+from src.config.engine_api import (OVERWRITE_STT_CODE, SHM_CANCELLED_STT_CODE,
+                                   STORAGE_DIR)
+from src.config.engine_api import EngineSocketAPI as SocketAPI
+from src.config.engine_api import ShmTensorSchema
+from src.config.engine_server import ENGINE_SOCKET_ADDRESS as ADDRESS
+from src.config.engine_server import ENGINE_SOCKET_FAMILY as SOCKET_FAMILY
+from src.config.engine_server import ENGINE_SOCKET_KIND as SOCKET_KIND
+from src.config.settings import DEATHLOCKS_CHECKING
+from src.libs.socket_protocol.client.exceptions import (ContentEncodingError,
+                                                        RequestException,
                                                         StatusCodeError)
 from src.libs.socket_protocol.client.requests import request
-from src.shared import get_overwrite_counter, get_shm_lock
+from src.shared import current_overwrite_counter, get_shm_lock
 from src.shared import is_in_deathlocks_checking as is_in_dl_checking
 from src.web.core.logging import logger
 
-from ._resources import get_shms
+from ._resources import using_worker_shms, SKIP_FIRST_TIME_REASON, skip_first_time_complete
 
 
 def engine_health_check(raise_exp=True, timeout=20) -> bool:
@@ -35,6 +39,15 @@ def engine_health_check(raise_exp=True, timeout=20) -> bool:
 
     return True
 
+class _SHMAccessError(RuntimeError):
+    pass
+class _WaitForShmDLChecking(Exception):
+    pass
+
+
+def _raise_shm_access_error():
+    raise _SHMAccessError("too many processes or threads accessing SHM simultaneously, "
+                                    "or a process was crashed while using shared memory")
 
 class _EnigneTaskCounter:
     __slots__ = ('_shm', '_file')
@@ -94,9 +107,9 @@ def _load_outputs(response_dict: dict, output_shm: SharedMemory) -> list[NDArray
 
         for tensor_info in outputs:
             tensor_schema = ShmTensorSchema(**tensor_info)
-            if tensor_schema.shm != output_shm.name:
+            if tensor_schema.shm_name != output_shm.name:
                 raise RequestException(
-                    f"Invalid output SHM name, expected: '{output_shm.name}', actual: '{tensor_schema.shm}'")
+                    f"Invalid output SHM name, expected: '{output_shm.name}', actual: '{tensor_schema.shm_name}'")
             output_tensor = np.ndarray(
                 shape=tensor_schema.shape, dtype=tensor_schema.dtype)
             output_tensors.append(output_tensor)
@@ -113,20 +126,23 @@ def _load_outputs(response_dict: dict, output_shm: SharedMemory) -> list[NDArray
             # Ensuring that deathlocks never occur.
             try:
 
-                header_hex = buf[:SHM_HEADER_SIZE].hex()
                 for i, output in enumerate(output_tensors):
                     shm_tensor = shm_tensors[i]
                     output[:] = shm_tensor[:]
+
+                header_hex = buf[:SHM_HEADER_SIZE].hex()
 
             finally:
                 lock.release()
 
         else:
-            raise RuntimeError(
-                "Too many processes or threads accessing SHM simultaneously.")
+            if not is_in_dl_checking():
+                raise _raise_shm_access_error()
+            else:
+                raise _WaitForShmDLChecking()
 
         if header_hex != shm_nonce:
-            get_overwrite_counter().increase()
+            current_overwrite_counter().increase()
             raise RequestException(
                 "Invalid output SHM header. The output SHM may be overwritten")
 
@@ -181,22 +197,18 @@ def _log_engine_tasks_interval():
     if total and total % 100 == 0:
         logger.info("[Interval Log] Engine tasks for web application worker [%d]: total %d, shm %d, file %d", os.getpid(),
                     total, _task_counter.shm, _task_counter.file)
-# import threading
 
 def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> list[NDArray]:
     """Request inference to engine via shared memory or file
-
-    NOTE:
-        Do not use this function in multi-threading. The SHM can be overwritten.
     """
-    # assert threading.current_thread() is threading.main_thread()
 
     using_shm = not is_in_dl_checking()
+    reason = -1
     if using_shm:
-        shms = get_shms()
-        if shms:
-            input_shm = shms[0]
-            output_shm = shms[1] if len(shms) > 1 else input_shm
+        worker_shms, reason = using_worker_shms()
+        if worker_shms:
+            input_shm = worker_shms[0]
+            output_shm = worker_shms[1] if len(worker_shms) > 1 else input_shm
             if input_shm.size < input_tensor.nbytes + SHM_HEADER_SIZE:
                 logger.warning(
                     "Failed to acquire shared memory with size %d, try request to engine with 'file' mode", input_tensor.nbytes + SHM_HEADER_SIZE)
@@ -222,31 +234,29 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
                     lock.release()
             else:
                 if not is_in_dl_checking():
-                    raise RuntimeError(
-                        "Too many processes or threads accessing SHM simultaneously.")
+                    _raise_shm_access_error()
                 else:
                     # SHM task cancelled by deathlocks checking. Let's retry with 'file' mode
                     using_shm = False
                     break
 
             tensor_content = ShmTensorSchema(
-                shape=input_tensor.shape, dtype=input_tensor.dtype.name, shm=input_shm.name, buf_from=SHM_HEADER_SIZE).original_dict()
+                shape=input_tensor.shape, dtype=input_tensor.dtype.name, shm_name=input_shm.name, buf_from=SHM_HEADER_SIZE).original_dict()
 
             content = {'model_name': model_name,
                        'input_tensor': tensor_content, 'mode': 'shm', 'output_shm': output_shm.name, 'shm_nonce': nonce.hex()}
 
-            # Current setting of all SHM name is 'ascii' charset. It's ok for ensure_ascii=True
             res = request(ADDRESS, SocketAPI.INFERENCE, data=content,
                           address_family=SOCKET_FAMILY, socket_kind=SOCKET_KIND, ensure_ascii=True, timeout=timeout)
             try:
                 res.raise_for_status()
             except StatusCodeError as e:
 
-                if res.status_code == 499:
+                if res.status_code == OVERWRITE_STT_CODE:
                     # Overwrite detected
-                    get_overwrite_counter().increase()
+                    current_overwrite_counter().increase()
 
-                elif res.status_code == 488:
+                elif res.status_code == SHM_CANCELLED_STT_CODE:
                     # SHM task cancelled by deathlocks checking. Let's retry with 'file' mode
                     using_shm = False
                     break
@@ -262,7 +272,11 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
             response_dict = res.json()
             assert isinstance(
                 response_dict, dict), "Content return must be a dict"
-            outputs = _load_outputs(response_dict, output_shm)
+            try:
+                outputs = _load_outputs(response_dict, output_shm)
+            except _WaitForShmDLChecking:
+                using_shm = False
+                break
             _task_counter.increase_shm()
             _log_engine_tasks_interval()
             return outputs
@@ -278,6 +292,8 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
                 os.remove(file_path)
             except Exception:
                 pass
+        if reason == SKIP_FIRST_TIME_REASON:
+            skip_first_time_complete()
         _task_counter.increase_file()
         _log_engine_tasks_interval()
         return ret

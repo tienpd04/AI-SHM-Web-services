@@ -3,20 +3,38 @@ import signal
 import socket
 import sys
 
-from src.config.engine import (ENGINE_SOCKET_ADDRESS, ENGINE_SOCKET_FAMILY,
-                               ENGINE_SOCKET_KIND)
+from src.config.constants import ENGINE_LOGGER_NAME
+from src.config.engine_server import (ENGINE_SOCKET_ADDRESS,
+                                      ENGINE_SOCKET_FAMILY, ENGINE_SOCKET_KIND)
 from src.config.settings import DEATHLOCKS_CHECKING, LOGS_DIR, NUM_LOG_BACKUP
 
 # This is master module, just create server and worker
 # Do not import the worker module (or any objects from the worker module) as global variables.
 
 
+def _check_following_import():
+    import warnings
+
+    from src import shared
+    if not shared._isinitialized:
+        warnings.warn(
+            f"Main process use child process module '{__name__}' before create the shared module", category=RuntimeWarning)
+    elif not shared._manager is None:
+        warnings.warn("Engine doesn't need to use resources manager", category=RuntimeWarning)
+
+    del warnings
+    del shared
+
+
+_check_following_import()
+del _check_following_import
+
 
 def _setup_logging():
     import logging
     from logging.handlers import TimedRotatingFileHandler
     log_level = logging.INFO
-    logger = logging.getLogger("engine")
+    logger = logging.getLogger(ENGINE_LOGGER_NAME)
     logger.setLevel(log_level)
 
     formatter = logging.Formatter(
@@ -28,7 +46,7 @@ def _setup_logging():
     logger.addHandler(stdout_handler)
 
     file_handler = TimedRotatingFileHandler(os.path.join(
-        LOGS_DIR, "engine.log"), when='MIDNIGHT', backupCount=NUM_LOG_BACKUP)
+        LOGS_DIR, f"{ENGINE_LOGGER_NAME}.log"), when='MIDNIGHT', backupCount=NUM_LOG_BACKUP)
     file_handler.setLevel(log_level)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
@@ -41,60 +59,37 @@ logger = None
 
 if DEATHLOCKS_CHECKING:
     import time
-    from typing import TYPE_CHECKING, cast
+    from typing import TYPE_CHECKING, Mapping
 
     from src.config.settings import DEATHLOCK_CHECKING_TIME
     if TYPE_CHECKING:
         from multiprocessing.synchronize import Lock as LockT
-        from threading import Event
 
         from src.shared import _SharedFlag
 
+    def _deathlocks_checking(shm_locks: Mapping[str, 'LockT'], flag: '_SharedFlag'):
 
-
-    def _deathlocks_checking(cancel_event: 'Event', shm_locks: dict[str, 'LockT'], flag: '_SharedFlag'):
-
+        # Set the flag to notify web application workers and engine workers not to use shared memory (swith to 'file' mode).
+        #   This means they will not use any locks in 'shm_locks'.
         flag.set()
-        logger.info("Deathlocks checking start")
-
+        logger.info(
+            "Deathlocks checking start after a engine worker was crashed.")
         for shm_name, lock in shm_locks.items():
-
-            remaining_time = DEATHLOCK_CHECKING_TIME
-            while remaining_time > 0:
-                # Doesn't need to be perfectly precise;
-                if lock.acquire(True, timeout=1):
-                    try:
-                        lock.release()
-                    except ValueError:
-                        pass
-                    break
-
-                if cancel_event.is_set():
-                    break
-
-                remaining_time -= 1
-
-            if remaining_time <= 0:
-                # timeout
-                try:
-                    lock.release()
-                except ValueError:
-                    pass
-                else:
+            got_lock = lock.acquire(True, timeout=DEATHLOCK_CHECKING_TIME)
+            try:
+                lock.release()
+            except ValueError:
+                pass
+            else:
+                if not got_lock:
                     logger.warning(
-                            "A deadlock was detected for SHM '%s'. It was automatically released after the %.2f seconds timeout expired.", shm_name, DEATHLOCK_CHECKING_TIME)
+                        "A deadlock was detected for SHM '%s'. It was automatically released after the %.2f seconds timeout expired.", shm_name, DEATHLOCK_CHECKING_TIME)
 
-            if cancel_event.is_set():
-                break
-
-
-        # Sleep enough time for execute 'src.shared.is_in_deathlocks_checking' function that called by web application worker or engine worker after they aquired a lock failed
+        # Seep a time for other processes check the flag if they acquire a lock failed while deathlocks checking is running
         time.sleep(0.1)
-        if not cancel_event.is_set():
-            flag.clear()
-            logger.info("Deathlocks checking done")
-        else:
-            logger.info("Deathlocks checking cancelled")
+        flag.clear() # Now, the shared memory ('shm' mode) can use again.
+
+        logger.info("Deathlocks checking complete")
 
 
 def engine_target(ready_event=None):
@@ -113,7 +108,6 @@ def engine_target(ready_event=None):
     logger.info("Listening at: %s", str(address))
 
     if DEATHLOCKS_CHECKING:
-        cancel_event: Event = None
         thr = None
 
     # NOTE:
@@ -152,26 +146,21 @@ def engine_target(ready_event=None):
                         "Engine worker %d terminated by signal %d", child_pid, term_signal)
 
                     if DEATHLOCKS_CHECKING:
-                        import threading
-
                         from src import shared
-                        if thr is not None:
-                            cast(threading.Event, cancel_event).set()
-                            cast(threading.Thread, thr).join()
-                            cast(threading.Event, cancel_event).clear()
+                        if not shared.is_in_deathlocks_checking():
+                            import threading
 
-                        else:
-                            cancel_event = threading.Event()
+                            thr = threading.Thread(target=_deathlocks_checking, args=(shared.get_all_shm_locks(), shared.get_deathlock_checking_flag()))
+                            thr.start()
+                            del threading
+                            # Need to sleep a time before create new process after create a thread.
+                            time.sleep(1)
 
-                        thr = threading.Thread(target=_deathlocks_checking, args=(cancel_event, shared.get_all_shm_locks(), shared.get_deathlock_checking_flag()))
-                        thr.start()
-                        del threading, shared
-                        # Need to sleep a time before create new process after create a thread.
-                        time.sleep(1)
-
+                        del shared
 
                     # Going to create new worker
                     continue
+
                 else:
                     # May be never in this case, but it is ok to handle
                     break
@@ -193,8 +182,6 @@ def engine_target(ready_event=None):
     except ChildProcessError:
         pass
 
-
-
     logger.info("Shutting down: Master")
     server_socket.close()
     if isinstance(address, str) and os.path.exists(address):
@@ -204,7 +191,6 @@ def engine_target(ready_event=None):
             pass
 
     if DEATHLOCKS_CHECKING and thr is not None:
-        cancel_event.set()
         thr.join()
 
 

@@ -27,7 +27,7 @@ def _create_engine():
 #     return app_logger
 
 def _create_app(engine):
-    from src.config.engine import EngineSocketAPI
+    from src.config.engine_api import EngineSocketAPI
     from src.engine.api.healthcheck import health_check
     from src.engine.api.inference import inference
     from src.libs.socket_protocol.server import SocketApplicaltion

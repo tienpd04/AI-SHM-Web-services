@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-from src.config.engine import ModelName
+from src.config.engine_api import ModelName
 from src.config.settings import (ARC_FACE_MODEL_PATH, COCO_YOLO11_MODEL_PATH,
                                  PPOCR_V6_MODEL_PATH)
 from src.libs.models.onnxinference import (SingleInputOnnxInference,

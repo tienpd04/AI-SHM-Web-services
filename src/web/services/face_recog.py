@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
-from src.config.engine import ModelName
+from src.config.engine_api import ModelName
 from src.config.settings import ARC_FACE_USING_RGB
 
 from .engine import inference
