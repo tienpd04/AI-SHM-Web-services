@@ -137,7 +137,7 @@ def _load_outputs(response_dict: dict, output_shm: SharedMemory) -> list[NDArray
 
         else:
             if not is_in_dl_checking():
-                raise _raise_shm_access_error()
+                _raise_shm_access_error()
             else:
                 raise _WaitForShmDLChecking()
 
@@ -163,25 +163,19 @@ _file_mode_ensure_ascii = STORAGE_DIR.isascii()
 def _inference_from_file(model_name: str, tensor_file_path: str, timeout: float = None) -> list[NDArray]:
     content = {'model_name': model_name,
                "mode": "file", "filepath": tensor_file_path}
-    try:
-        res = request(ADDRESS, SocketAPI.INFERENCE, data=content,
-                      address_family=SOCKET_FAMILY, socket_kind=SOCKET_KIND, ensure_ascii=_file_mode_ensure_ascii, timeout=timeout)
-        res.raise_for_status()
-        response_dict = res.json()
-        assert isinstance(response_dict, dict), "Content return must be a dict"
+    res = request(ADDRESS, SocketAPI.INFERENCE, data=content,
+                    address_family=SOCKET_FAMILY, socket_kind=SOCKET_KIND, ensure_ascii=_file_mode_ensure_ascii, timeout=timeout)
 
-    except StatusCodeError as e:
+
+    if res.status_code >= 400:
         try:
             msg = res.text
         except Exception:
             msg = ''
         raise RequestException(
-            f"Request failed with status code {res.status_code}: {msg}") from e
-    except Exception as e:
-        logger.error(
-            "Failed to request inference from engine with exception: %s", str(e))
-        # logger.error(traceback.format_exc())
-        raise
+            f"Request failed with status code {res.status_code}: {msg}")
+    response_dict = res.json()
+    assert isinstance(response_dict, dict), "Content return must be a dict"
 
     # Inferece from file always return 'file' mode
     filepath = cast(dict, response_dict.get('outputs')).get("filepath")
@@ -248,9 +242,8 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
 
             res = request(ADDRESS, SocketAPI.INFERENCE, data=content,
                           address_family=SOCKET_FAMILY, socket_kind=SOCKET_KIND, ensure_ascii=True, timeout=timeout)
-            try:
-                res.raise_for_status()
-            except StatusCodeError as e:
+
+            if res.status_code >= 400:
 
                 if res.status_code == OVERWRITE_STT_CODE:
                     # Overwrite detected
@@ -266,7 +259,7 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
                 except Exception:
                     msg = ''
                 raise RequestException(
-                    f"Request failed with status code {res.status_code}: {msg}") from e
+                    f"Request failed with status code {res.status_code}: {msg}")
 
 
             response_dict = res.json()

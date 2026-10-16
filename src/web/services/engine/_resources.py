@@ -54,7 +54,7 @@ def _take_resources() -> bool:
     global _worker_shms
     if _worker_shms:
         # taken
-        return _worker_shms
+        return True
     try:
         ret = worker_take_shm_names_set()
         if ret is None:
@@ -102,7 +102,7 @@ def using_worker_shms() -> tuple[tuple[SharedMemory, ...] | None, int]:
         return None, SKIP_FIRST_TIME_REASON
 
     if _dl_checking_event is not None and _dl_checking_event.is_set():
-        # Notify the engine using 'file' mode while deatlocks checking is still running, it means the engine does not using any shm lock.
+        # Notify the engine using 'file' mode while deathlocks checking is still running, it means the engine does not using any shm lock.
         return None, DL_CHECKING_REASON
 
     return _worker_shms, NO_REASON

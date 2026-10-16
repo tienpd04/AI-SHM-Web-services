@@ -197,7 +197,7 @@ _dl_chk_flg = _NotAFlag()
 
 _shm_name_tuples = None
 
-_dummy_lock = _DummyLock()
+_dummy_lock = None
 
 # No need for hashing. Just need to ensure the functions aren't called incorrectly.
 _key = None
@@ -205,7 +205,7 @@ _key = None
 def initialize(shm_name_tuples: list[tuple[str, ...]], key: str):
     """For use only by the main process
     """
-    global _isinitialized, _manager, _overwrite_counter, _dl_chk_flg, _shm_locks, _shm_name_tuples, _key
+    global _isinitialized, _manager, _dl_chk_flg, _shm_locks, _shm_name_tuples, _key
     assert _isinitialized is False, f"{__name__}.initialize called too many times"
 
     assert all([isinstance(x, (list, tuple)) for x in shm_name_tuples])
@@ -223,10 +223,10 @@ def initialize(shm_name_tuples: list[tuple[str, ...]], key: str):
     if USING_SHM_LOCK:
         for name in shm_names:
             locks[name] = Lock()
-
+    else:
+        global _dummy_lock
+        _dummy_lock = _DummyLock()
     _shm_locks = MappingProxyType(locks)
-
-    _overwrite_counter = _OverwriteCounter()
 
     _dl_chk_flg = _SharedFlag() if DEATHLOCKS_CHECKING else False
 
@@ -245,8 +245,10 @@ def init_rs_manager(key):
     assert key == _key
     global _shm_name_tuples
     global _manager
+    global _overwrite_counter
     assert _manager is None, f"{__name__}.init_rs_manager called too many times"
     _manager = _ResourcesManager(_shm_name_tuples)
+    _overwrite_counter = _OverwriteCounter()
     del _shm_name_tuples
 
 
@@ -276,11 +278,11 @@ def current_using_shms():
 
 if not USING_SHM_LOCK:
     def get_shm_lock(name: str) -> _DummyLock:
-        assert _isinitialized
+        # assert _isinitialized
         return _dummy_lock
 else:
     def get_shm_lock(name: str) -> 'LockT':
-        assert _isinitialized
+        # assert _isinitialized
         return _shm_locks[name]
 
 
@@ -297,7 +299,7 @@ def current_overwrite_counter():
     """For use only by the web application workers process.
     It is used to detect and log shared memory overwrite
     """
-    assert _isinitialized
+    assert _overwrite_counter is not None
     return _overwrite_counter
 
 
@@ -315,7 +317,7 @@ def is_in_deathlocks_checking():
        Otherwise, return `True` if the master engine activated the deathlock check flag following a worker engine crashed.
             After deathlocks checking is complete, it will return `False'
     """
-    assert _isinitialized
+    # assert _isinitialized
     return bool(_dl_chk_flg)
 
 
@@ -327,6 +329,5 @@ __all__ = [
     'get_deathlock_checking_flag',
     'is_in_deathlocks_checking',
     'current_overwrite_counter'
-
 ]
 

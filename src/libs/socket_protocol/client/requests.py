@@ -157,9 +157,9 @@ def request(
     first_rcv_size: int = 4096,
 ) -> Response:
 
-    if not isinstance(api, int) or api < API_MIN or api > API_MAX:
+    if not isinstance(api, int):
         raise ValueError(
-            f"\'api\' must be an integer between {API_MIN} and {API_MAX}")
+            "\'api\' must be an integer")
 
     if data is None or isinstance(data, bytes | memoryview):
         req = ClientRequest(api, data)
@@ -172,6 +172,13 @@ def request(
 
     try:
         req_data = req.pack()
+
+    except OverflowError:
+        if api < API_MIN or api > API_MAX:
+            raise ValueError(
+                        f"\'api\' must be an integer between {API_MIN} and {API_MAX}")
+        raise
+
     except Exception as e:
         raise ContentEncodingError(
             f"'data' must be a bytes, memoryview, str or jsonable data type with {'ascii' if ensure_ascii else 'utf-8'} encoding charset") from e

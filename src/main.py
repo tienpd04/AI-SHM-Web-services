@@ -77,7 +77,7 @@ def _cleanup_resources(shm_list: list[SharedMemory]):
             shm.close()
             shm.unlink()
         except Exception as e:
-            _logger.warning(f"Error while releasing shared memory: {e}")
+            _logger.warning("Error while releasing shared memory: %s", e)
 
 
 def _load_env():
@@ -155,6 +155,7 @@ def main():
                       traceback.format_exc())
         engine_p.terminate()
         engine_p.join()
+        _cleanup_resources(shm_list)
 
     # Now, the web application worker(s) can use resources manager after fork.
     # The engine master (also engine worker) cannot use because before create engine process the resouces manager is not initialized
