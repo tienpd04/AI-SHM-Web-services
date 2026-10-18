@@ -44,7 +44,8 @@ def _setup_logging():
 def _create_resources() -> tuple[list[SharedMemory], list[tuple[str, ...]]]:
 
     from src.config.constants import SHM_HEADER_SIZE
-    from src.config.settings import (GUNICORN_NUM_WORKERS, RESOURCE_SHM_INPUT_SIZE_MB,
+    from src.config.settings import (GUNICORN_NUM_WORKERS,
+                                     RESOURCE_SHM_INPUT_SIZE_MB,
                                      RESOURCE_SHM_OUTPUT_SIZE_MB)
     _logger.info("Creating shared resources using beween processes")
 
@@ -66,7 +67,7 @@ def _create_resources() -> tuple[list[SharedMemory], list[tuple[str, ...]]]:
     return shm_list, name_tuples
 
 def _log_shared_config():
-    from src.config.settings import USING_SHM_LOCK, DEATHLOCKS_CHECKING
+    from src.config.settings import DEATHLOCKS_CHECKING, USING_SHM_LOCK
     _logger.info("[Shared Config]: USING_SHM_LOCK = %s", USING_SHM_LOCK)
     _logger.info("[Shared Config]: DEATHLOCKS_CHECKING = %s", DEATHLOCKS_CHECKING)
 

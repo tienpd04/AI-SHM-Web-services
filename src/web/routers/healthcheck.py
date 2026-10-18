@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from src.config.settings import RESOURCES_MANAGER_LOG_INTERVAL
-from src.shared import current_using_shms, current_overwrite_counter
+from src.shared import current_overwrite_counter, current_using_shms
 from src.web.core.logging import logger, rq_log_error, rq_log_info
 from src.web.services.engine import engine_health_check
 

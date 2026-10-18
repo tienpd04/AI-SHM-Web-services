@@ -1,6 +1,5 @@
 import os
 import pickle
-import secrets
 from multiprocessing.shared_memory import SharedMemory
 from typing import cast
 
@@ -15,16 +14,15 @@ from src.config.engine_api import ShmTensorSchema
 from src.config.engine_server import ENGINE_SOCKET_ADDRESS as ADDRESS
 from src.config.engine_server import ENGINE_SOCKET_FAMILY as SOCKET_FAMILY
 from src.config.engine_server import ENGINE_SOCKET_KIND as SOCKET_KIND
-from src.config.settings import DEATHLOCKS_CHECKING
-from src.libs.socket_protocol.client.exceptions import (ContentEncodingError,
-                                                        RequestException,
-                                                        StatusCodeError)
+from src.libs.socket_protocol.client.exceptions import RequestException
 from src.libs.socket_protocol.client.requests import request
+from src.libs.utils.temp_uuid import tempuuid
 from src.shared import current_overwrite_counter, get_shm_lock
 from src.shared import is_in_deathlocks_checking as is_in_dl_checking
 from src.web.core.logging import logger
 
-from ._resources import using_worker_shms, SKIP_FIRST_TIME_REASON, skip_first_time_complete
+from ._resources import (SKIP_FIRST_TIME_REASON, skip_first_time_complete,
+                         using_worker_shms)
 
 
 def engine_health_check(raise_exp=True, timeout=20) -> bool:
@@ -212,7 +210,7 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
 
     if using_shm:
         for _ in range(1):
-            nonce = secrets.token_bytes(SHM_HEADER_SIZE)
+            nonce = tempuuid().bytes
             buf = input_shm.buf
             shm_tensor = np.ndarray(shape=input_tensor.shape,
                                     dtype=input_tensor.dtype, buffer=buf[SHM_HEADER_SIZE:])
@@ -276,7 +274,7 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
 
     if not using_shm:
 
-        file_path = os.path.join(STORAGE_DIR, secrets.token_hex(16) + ".npy")
+        file_path = os.path.join(STORAGE_DIR, tempuuid().__str__() + ".npy")
         np.save(file_path, input_tensor)
         try:
             ret = _inference_from_file(model_name, file_path, timeout=timeout)

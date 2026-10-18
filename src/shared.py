@@ -7,7 +7,8 @@ from multiprocessing import BoundedSemaphore, Lock, Semaphore
 from multiprocessing.shared_memory import SharedMemory
 from types import MappingProxyType
 from typing import TYPE_CHECKING
-from src.config.settings import USING_SHM_LOCK, DEATHLOCKS_CHECKING
+
+from src.config.settings import DEATHLOCKS_CHECKING, USING_SHM_LOCK
 
 # NOTE:
 #   Do not import any object from worker module.

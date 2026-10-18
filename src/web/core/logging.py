@@ -14,8 +14,7 @@ ERROR = logging.ERROR
 def setup_logging():
     log_level = INFO
     from src.config.constants import FASTAPI_LOGGER_NAME
-    from src.config.settings import (LOGS_DIR,
-                                     NUM_LOG_BACKUP)
+    from src.config.settings import LOGS_DIR, NUM_LOG_BACKUP
     logger = logging.getLogger(FASTAPI_LOGGER_NAME)
     logger.setLevel(log_level)
 

@@ -3,9 +3,11 @@
 def _setup_argv():
     import sys
 
-    from src.config.settings import (GUNICORN_ACCESS_LOG_FILE, GUNICORN_ERROR_LOG_FILE, HOST,
-                                     GUNICORN_LOG_LEVEL, GUNICORN_NUM_WORKERS, PORT,
-                                     GUNICORN_WORKER_CONNECTIONS, GUNICORN_TIMEOUT)
+    from src.config.settings import (GUNICORN_ACCESS_LOG_FILE,
+                                     GUNICORN_ERROR_LOG_FILE,
+                                     GUNICORN_LOG_LEVEL, GUNICORN_NUM_WORKERS,
+                                     GUNICORN_TIMEOUT,
+                                     GUNICORN_WORKER_CONNECTIONS, HOST, PORT)
     sys.argv.clear()
     sys.argv.append("gunicorn")
     sys.argv.append(f"-b {HOST}:{PORT}")
