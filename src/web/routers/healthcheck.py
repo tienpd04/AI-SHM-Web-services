@@ -10,18 +10,18 @@ from src.web.services.engine import engine_health_check
 
 router = APIRouter()
 
+
 def _rs_need_to_log():
     if RESOURCES_MANAGER_LOG_INTERVAL > 0:
-        now = time.time()
-        sec = int(now)
-        now_mili = sec * 1000 + round((now - sec) * 1000)
-        interval_mili = round(RESOURCES_MANAGER_LOG_INTERVAL * 1000)
-        health_chk_mili = 30*1000
-        need_to_log = (now_mili % max(1,interval_mili)) // health_chk_mili == 0
+        now_nano = time.monotonic_ns()
+        now_ms = now_nano // 1000000
+        interval_ms = RESOURCES_MANAGER_LOG_INTERVAL * 1000
+        health_chk_ms = 30*1000 # 30: health check configured in docker-compose
+        need_to_log = (now_ms % interval_ms) // health_chk_ms == 0
         # Doesn't need to be perfectly precise;
-        # 30: health check configured in docker-compose
         return need_to_log
     return False
+
 
 @router.get("/api/v1/health")
 async def health_check(request: Request):

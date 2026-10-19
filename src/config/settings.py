@@ -80,7 +80,7 @@ RESOURCE_SHM_OUTPUT_SIZE_MB: int = _getenv(
     "RESOURCE_SHM_OUTPUT_SIZE_MB", 32, cast=int)
 
 RESOURCES_MANAGER_LOG_INTERVAL: int = _getenv(
-    "RESOURCES_MANAGER_LOG_INTERVAL", 3600, cast=int)
+    "RESOURCES_MANAGER_LOG_INTERVAL", 600, cast=int)
 
 USING_SHM_LOCK: bool = _getenv("USING_SHM_LOCK", True, cast=bool)
 
@@ -97,8 +97,8 @@ USING_SHM_LOCK: bool = _getenv("USING_SHM_LOCK", True, cast=bool)
 DEATHLOCKS_CHECKING: bool = USING_SHM_LOCK and _getenv("DEATHLOCKS_CHECKING", False, cast=bool)
 
 # Recommendation: Setup this greater than or equal to the config timeout of gunicorn
-DEATHLOCK_CHECKING_TIME: float = _getenv(
-    "DEATHLOCK_CHECKING_TIME", GUNICORN_TIMEOUT, cast=float)
+DEATHLOCK_CHECKING_TIME: int = _getenv(
+    "DEATHLOCK_CHECKING_TIME", GUNICORN_TIMEOUT + 10, cast=int)
 
 if DEATHLOCK_CHECKING_TIME <= 0:
     raise _EnvironmentSettingError(
