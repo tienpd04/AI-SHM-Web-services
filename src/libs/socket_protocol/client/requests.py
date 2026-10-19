@@ -1,6 +1,7 @@
 import json
 import socket
 from typing import Any, TypeAlias
+import struct
 
 from ..protocol import (API_MAX, API_MIN, RESPONSE_HEADER_SIZE,
                         InvalidProtocolHeaderKey, NotEnoughHeaderSize,
@@ -173,11 +174,11 @@ def request(
     try:
         req_data = req.pack()
 
-    except OverflowError:
+    except struct.error as e:
         if api < API_MIN or api > API_MAX:
             raise ValueError(
-                        f"\'api\' must be an integer between {API_MIN} and {API_MAX}")
-        raise
+                        f"\'api\' must be an integer between {API_MIN} and {API_MAX}") from e
+        raise ValueError("data is too big") from e
 
     except Exception as e:
         raise ContentEncodingError(

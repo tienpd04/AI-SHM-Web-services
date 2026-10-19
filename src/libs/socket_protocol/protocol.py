@@ -1,4 +1,5 @@
-
+import os
+import struct
 from enum import IntEnum
 from typing import Final, Tuple
 
@@ -33,25 +34,27 @@ class RequestContentType(IntEnum):
     TEXT = 2
     JSON = 3
 
+
 class ResponseContentType(IntEnum):
     BYTES = 1
     TEXT = 2
     JSON = 3
 
 
-# REQUEST_HEADER_SIZE: Final[int] = 8
-# RESPONSE_HEADER_SIZE: Final[int] = 8
-
 class SocketProtocolError(OSError):
     pass
+
+
 class NotEnoughHeaderSize(SocketProtocolError):
     pass
+
+
 class InvalidProtocolHeaderKey(SocketProtocolError):
     pass
 
-import os
 
-_using_header_key = os.getenv("SOCKET_PROTOCOL_USING_HEADER_KEY", 'on').lower() not in ('off', 'false')
+_using_header_key = os.getenv(
+    "SOCKET_PROTOCOL_USING_HEADER_KEY", 'on').lower() not in ('off', 'false')
 
 del os
 
@@ -73,69 +76,45 @@ if _using_header_key:
     RESPONSE_HEADER_SIZE: Final[int] = 24
 
     def pack_request_header(api: int, content_type: int, content: bytes | memoryview) -> bytes:
-        return _client_key + api.to_bytes(2,'little') + \
-                content_type.to_bytes(2,'little') + \
-                    len(content).to_bytes(4,'little')
+        return _client_key + struct.pack('HHI', api, content_type, len(content))
 
     def unpack_request_header(buff: bytes) -> Tuple[int, int, int]:
         if len(buff) < 24:
-            raise NotEnoughHeaderSize("'buff' required at least 24 number of bytes") from None
+            raise NotEnoughHeaderSize() from None
 
         if buff[:16] != _client_key:
             raise InvalidProtocolHeaderKey() from None
 
-        api = int.from_bytes(buff[16:18],'little')
-        content_type = int.from_bytes(buff[18:20],'little')
-        content_len = int.from_bytes(buff[20:24],'little')
-        return api, content_type, content_len
-
+        return struct.unpack('HHI', buff[16:24])
 
     def pack_response_header(status_code: int, content_type: int, content: bytes) -> bytes:
-        return _server_key + status_code.to_bytes(2,'little') + \
-                content_type.to_bytes(2,'little') + \
-                    len(content).to_bytes(4,'little')
+        return _server_key + struct.pack('HHI', status_code, content_type, len(content))
 
     def unpack_response_header(buff: bytes) -> Tuple[int, int, int]:
         if len(buff) < 24:
-            raise NotEnoughHeaderSize("'buff' required at least 24 number of bytes") from None
+            raise NotEnoughHeaderSize() from None
 
         if buff[:16] != _server_key:
             raise InvalidProtocolHeaderKey() from None
 
-        status_code = int.from_bytes(buff[16:18],'little')
-        content_type = int.from_bytes(buff[18:20],'little')
-        content_len = int.from_bytes(buff[20:24],'little')
-        return status_code, content_type, content_len
+        return struct.unpack('HHI', buff[16:24])
 
 else:
     REQUEST_HEADER_SIZE: Final[int] = 8
     RESPONSE_HEADER_SIZE: Final[int] = 8
 
     def pack_request_header(api: int, content_type: int, content: bytes | memoryview) -> bytes:
-        return api.to_bytes(2,'little') + \
-                content_type.to_bytes(2,'little') + \
-                    len(content).to_bytes(4,'little')
+        return struct.pack('HHI', api, content_type, len(content))
 
     def unpack_request_header(buff: bytes) -> Tuple[int, int, int]:
         if len(buff) < 8:
-            raise NotEnoughHeaderSize(f"\'buff\' required at least 8 number of bytes")
-
-        api = int.from_bytes(buff[:2],'little')
-        content_type = int.from_bytes(buff[2:4],'little')
-        content_len = int.from_bytes(buff[4:8],'little')
-        return api, content_type, content_len
-
+            raise NotEnoughHeaderSize() from None
+        return struct.unpack('HHI', buff[:8])
 
     def pack_response_header(status_code: int, content_type: int, content: bytes) -> bytes:
-        return status_code.to_bytes(2,'little') + \
-                content_type.to_bytes(2,'little') + \
-                    len(content).to_bytes(4,'little')
+        return struct.pack('HHI', status_code, content_type, len(content))
 
     def unpack_response_header(buff: bytes) -> Tuple[int, int, int]:
         if len(buff) < 8:
-            raise NotEnoughHeaderSize("'buff' required at least 8 number of bytes")
-
-        status_code = int.from_bytes(buff[:2],'little')
-        content_type = int.from_bytes(buff[2:4],'little')
-        content_len = int.from_bytes(buff[4:8],'little')
-        return status_code, content_type, content_len
+            raise NotEnoughHeaderSize() from None
+        return struct.unpack('HHI', buff[:8])
