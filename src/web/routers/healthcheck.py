@@ -17,8 +17,10 @@ def _rs_need_to_log():
         now_ms = now_nano // 1000000
         interval_ms = RESOURCES_MANAGER_LOG_INTERVAL * 1000
         health_chk_ms = 30*1000 # 30: health check configured in docker-compose
-        need_to_log = (now_ms % interval_ms) // health_chk_ms == 0
+
         # Doesn't need to be perfectly precise;
+        need_to_log = (now_ms % interval_ms) < health_chk_ms + 1000 # add 1 second for process and waitting time
+
         return need_to_log
     return False
 
