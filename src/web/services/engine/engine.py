@@ -273,9 +273,9 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
             return outputs
 
     if not using_shm:
-
         file_path = os.path.join(STORAGE_DIR, tempuuid().__str__() + ".npy")
-        np.save(file_path, input_tensor)
+        with open(file_path, 'xb') as f:
+            np.save(f, input_tensor)
         try:
             ret = _inference_from_file(model_name, file_path, timeout=timeout)
         finally:

@@ -213,7 +213,7 @@ def inference(req: Request) -> Response:
 
     if output_mode == 'file':
         filepath = os.path.join(STORAGE_DIR, tempuuid().__str__() + '.pkl')
-        with open(filepath, 'wb') as f:
+        with open(filepath, 'xb') as f:
             pickle.dump(outputs, f)
         content = {'mode': output_mode, 'outputs': {'filepath': filepath}}
         return FileModeResponse(content)
