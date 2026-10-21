@@ -1,23 +1,27 @@
 '''
-All constants, schemas for both engine worker(s) and web application worker(s).
+All constants, schemas, functools for both engine worker(s) and web application worker(s).
 '''
 
 
+import secrets
 from dataclasses import dataclass as _dataclass
 from enum import IntEnum as _IntEnum
 from enum import StrEnum as _StrEnum
 
 from .constants import SHM_HEADER_SIZE as SHM_HEADER_SIZE
 from .settings import STORAGE_DIR as STORAGE_DIR
+from .settings import USING_SHM_LOCK
 
 
 class EngineSocketAPI(_IntEnum):
     HEALTH_CHECK = 1
     INFERENCE = 2
 
+
 OVERWRITE_STT_CODE = 499
 
 SHM_CANCELLED_STT_CODE = 488
+
 
 class ModelName(_StrEnum):
     # use ASCII only, do not use unicode
@@ -33,7 +37,6 @@ class ShmTensorSchema:
     shm_name: str
     buf_from: int = SHM_HEADER_SIZE
 
-
     def original_dict(self):
         '''
         Ensure that the returned dictionary (dict) is not modified.
@@ -42,6 +45,34 @@ class ShmTensorSchema:
 
 
 del _dataclass, _IntEnum, _StrEnum
+
+if USING_SHM_LOCK and SHM_HEADER_SIZE >= 16:
+    import time
+
+    def generate_shm_nonce():
+        """This function is called within a lock block.
+            The execution time of the code segment inside the lock block is almost always greater than 1 nanosecond.
+            This means that the subsequent `monotonic_ns` value will always increase.
+        """
+        return (
+            secrets.token_bytes(SHM_HEADER_SIZE - 6)  # >= 80 bits random
+            +
+            (time.monotonic_ns() & 0xffffffffffff).to_bytes(
+                6, 'little')  # 48 bits timestamp (> 3 days > engine request timeout)
+        )
+
+else:
+    def generate_shm_nonce():
+        """like uuid4
+            """
+        return secrets.token_bytes(SHM_HEADER_SIZE)
+
+
+def generate_filestem():
+    """like uuid4
+    """
+    return secrets.token_urlsafe(16)
+
 
 __all__ = [
     x for x in locals() if not x.startswith('_')

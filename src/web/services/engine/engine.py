@@ -10,13 +10,13 @@ from src.config.constants import SHM_HEADER_SIZE
 from src.config.engine_api import (OVERWRITE_STT_CODE, SHM_CANCELLED_STT_CODE,
                                    STORAGE_DIR)
 from src.config.engine_api import EngineSocketAPI as SocketAPI
-from src.config.engine_api import ShmTensorSchema
+from src.config.engine_api import (ShmTensorSchema, generate_filestem,
+                                   generate_shm_nonce)
 from src.config.engine_server import ENGINE_SOCKET_ADDRESS as ADDRESS
 from src.config.engine_server import ENGINE_SOCKET_FAMILY as SOCKET_FAMILY
 from src.config.engine_server import ENGINE_SOCKET_KIND as SOCKET_KIND
 from src.libs.socket_protocol.client.exceptions import RequestException
 from src.libs.socket_protocol.client.requests import request
-from src.libs.utils.temp_uuid import tempuuid
 from src.shared import current_overwrite_counter, get_shm_lock
 from src.shared import is_in_deathlocks_checking as is_in_dl_checking
 from src.web.core.logging import logger
@@ -210,7 +210,6 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
 
     if using_shm:
         for _ in range(1):
-            nonce = tempuuid().bytes
             buf = input_shm.buf
             shm_tensor = np.ndarray(shape=input_tensor.shape,
                                     dtype=input_tensor.dtype, buffer=buf[SHM_HEADER_SIZE:])
@@ -220,6 +219,7 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
                 # Safety lock: just copy data, do not create any big object and do not use unfamiliar module
                 # Ensuring that deathlocks never occur.
                 try:
+                    nonce = generate_shm_nonce()
                     buf[:SHM_HEADER_SIZE] = nonce
                     shm_tensor[:] = input_tensor[:]
                 finally:
@@ -273,7 +273,7 @@ def inference(model_name: str, input_tensor: NDArray, timeout: float = 20) -> li
             return outputs
 
     if not using_shm:
-        file_path = os.path.join(STORAGE_DIR, tempuuid().__str__() + ".npy")
+        file_path = os.path.join(STORAGE_DIR, generate_filestem() + ".npy")
         with open(file_path, 'xb') as f:
             np.save(f, input_tensor)
         try:

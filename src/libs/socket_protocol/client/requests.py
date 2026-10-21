@@ -1,7 +1,7 @@
 import json
 import socket
-from typing import Any, TypeAlias
 import struct
+from typing import Any, TypeAlias
 
 from ..protocol import (API_MAX, API_MIN, RESPONSE_HEADER_SIZE,
                         InvalidProtocolHeaderKey, NotEnoughHeaderSize,

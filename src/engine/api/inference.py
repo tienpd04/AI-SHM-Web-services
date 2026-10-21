@@ -12,13 +12,13 @@ import numpy as np
 
 from src.config.constants import SHM_HEADER_SIZE
 from src.config.engine_api import (OVERWRITE_STT_CODE, SHM_CANCELLED_STT_CODE,
-                                   STORAGE_DIR, ShmTensorSchema)
+                                   STORAGE_DIR, ShmTensorSchema,
+                                   generate_filestem, generate_shm_nonce)
 from src.libs.socket_protocol.server import (ASCIIJsonResponse,
                                              ASCIIPlainTextResponse,
                                              JSONResponse, PlainTextResponse,
                                              Request, Response,
                                              SocketApplicaltion)
-from src.libs.utils.temp_uuid import tempuuid
 from src.shared import get_shm_lock
 from src.shared import is_in_deathlocks_checking as is_in_dl_checking
 
@@ -78,7 +78,6 @@ def _load_shm_input_tensor(tensor_info: dict, shm_nonce: str) -> tuple[NDArray, 
 def _bind_shm_outputs(outputs: list[NDArray], shm: SharedMemory) -> tuple[list[ShmTensorSchema], bytes]:
     tensor_schemas: list[ShmTensorSchema] = []
     shm_tensors: list[NDArray] = []
-    shm_nonce = tempuuid().bytes
     shm_buff = shm.buf
     buf_from = SHM_HEADER_SIZE
 
@@ -100,6 +99,7 @@ def _bind_shm_outputs(outputs: list[NDArray], shm: SharedMemory) -> tuple[list[S
         # Safety lock: just copy data, do not create any big object and do not use unfamiliar module
         # Ensuring that deathlocks never occur.
         try:
+            shm_nonce = generate_shm_nonce()
             shm_buff[:SHM_HEADER_SIZE] = shm_nonce
 
             for i, tensor in enumerate(outputs):
@@ -212,7 +212,7 @@ def inference(req: Request) -> Response:
             return ASCIIJsonResponse(content)
 
     if output_mode == 'file':
-        filepath = os.path.join(STORAGE_DIR, tempuuid().__str__() + '.pkl')
+        filepath = os.path.join(STORAGE_DIR, generate_filestem() + '.pkl')
         with open(filepath, 'xb') as f:
             pickle.dump(outputs, f)
         content = {'mode': output_mode, 'outputs': {'filepath': filepath}}
