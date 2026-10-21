@@ -47,6 +47,7 @@ class _ResourcesManager(object):
         lock = Lock()
         size = 4 * len(shm_name_tuples)
         shm = SharedMemory(create=True, size=size)
+        # Set all bits of the shm buffer to 1
         shm.buf[:] = b'\xff' * size
 
         object.__setattr__(self, '_shm', shm)
@@ -63,7 +64,15 @@ class _ResourcesManager(object):
 
         pid = os.getpid()
 
+        # The default value for `pid_max` in Linux is 4,194,304 (a 22-bit value), configured in '/proc/sys/kernel/pid_max'.
+        # But it can be changed in runtime by user setting.
+        # 2,147,483,647 (a 31-bit value) is the maximum value for a 32-bit signed integer.
+        # In most operating systems, a 32-bit signed integer is used to define `pid_t` (the PID type) in C/C++ programming.
+        # Therefore, in the long term, the maximum PID value will always be <= 2,147,483,647.
+        assert pid.bit_length() < 32, "the worker's PID is too big, it must be smaller than 2147483648"
+
         pid_bytes = pid.to_bytes(4, 'little')
+        # now pid_bytes is always != b'\xff\xff\xff\xff'
 
         with self._lock:
             for i, names in enumerate(self._name_tuples):
