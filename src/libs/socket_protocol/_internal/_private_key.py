@@ -19,13 +19,14 @@ def _make_client_key():
     k4 = 0x7a7e8ab5346d37b287febecffe65548a
 
     k = 0
+    # Make something difficult to see
     k ^= _bit_rotate(k1, 79)
     k ^= _bit_rotate(k2, 31)
     k ^= _bit_rotate(k3, 43)
     k ^= _bit_rotate(k4, 97)
 
 
-    return md5(_protocol_key + k.to_bytes(16)).digest()
+    return md5(_protocol_key + k.to_bytes(16)).digest()[:16]
 
 def _make_server_key():
     k1 = 0x2966095d8c68e5b9188006987e9acb0f
@@ -34,13 +35,14 @@ def _make_server_key():
     k4 = 0x694e5ac4048324dc5992aa23d1b648c5
 
     k = 0
+    # Make something difficult to see
     k ^= _bit_rotate(k1, 83)
     k ^= _bit_rotate(k2, 37)
     k ^= _bit_rotate(k3, 53)
     k ^= _bit_rotate(k4, 71)
 
 
-    return md5(_protocol_key + k.to_bytes(16)).digest()
+    return md5(_protocol_key + k.to_bytes(16)).digest()[:16]
 
 _client_key = _make_client_key()
 

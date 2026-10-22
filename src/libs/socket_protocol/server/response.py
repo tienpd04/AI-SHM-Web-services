@@ -2,7 +2,7 @@ import json
 import struct
 from typing import Any
 
-from ..protocol import (STATUS_CODE_MAX, STATUS_CODE_MIN, ResponseContentType,
+from ..protocol import (STATUS_CODE_MAX, STATUS_CODE_MIN, CONTENT_TYPE_MIN, CONTENT_TYPE_MAX, ResponseContentType,
                         pack_response_header)
 
 
@@ -15,16 +15,16 @@ class Response:
         content: Any = None,
         status_code: int = 200,
     ) -> None:
-        if not isinstance(status_code, int):
-            raise ValueError(f"\'status_code\' must be an integer")
         self.status_code = status_code
         self.content = content
         body = self.render(content)
         try:
             header = pack_response_header(self.status_code, self.content_type, body)
         except struct.error as e:
-            if status_code < STATUS_CODE_MIN or status_code > STATUS_CODE_MAX:
+            if not isinstance(status_code, int) or status_code < STATUS_CODE_MIN or status_code > STATUS_CODE_MAX:
                 raise ValueError(f"\'status_code\' must be an integer between {STATUS_CODE_MIN} and {STATUS_CODE_MAX}") from e
+            if not isinstance(self.content_type, int) or self.content_type < CONTENT_TYPE_MIN or self.content_type > CONTENT_TYPE_MAX:
+                raise ValueError(f"\'content_type\' must be an integer between {CONTENT_TYPE_MIN} and {CONTENT_TYPE_MAX}") from e
             raise ValueError("content is too big") from e
         self.data = header + body
 

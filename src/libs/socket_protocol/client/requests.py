@@ -158,10 +158,6 @@ def request(
     first_rcv_size: int = 4096,
 ) -> Response:
 
-    if not isinstance(api, int):
-        raise ValueError(
-            "\'api\' must be an integer")
-
     if data is None or isinstance(data, bytes | memoryview):
         req = ClientRequest(api, data)
     elif isinstance(data, str):
@@ -170,15 +166,13 @@ def request(
     else:
         req = JSONRequest(
             api, data) if not ensure_ascii else ASCIIJSONRequest(api, data)
-
     try:
         req_data = req.pack()
-
     except struct.error as e:
-        if api < API_MIN or api > API_MAX:
+        if not isinstance(api, int) or api < API_MIN or api > API_MAX:
             raise ValueError(
                         f"\'api\' must be an integer between {API_MIN} and {API_MAX}") from e
-        raise ValueError("data is too big") from e
+        raise ValueError("'data' is too big") from e
 
     except Exception as e:
         raise ContentEncodingError(

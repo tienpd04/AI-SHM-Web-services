@@ -1,9 +1,10 @@
 '''
-All constants, schemas, functools for both engine worker(s) and web application worker(s).
+All constants, schemas, common functools for both engine worker(s) and web application worker(s).
 '''
 
 
-import secrets
+import os
+import base64
 from dataclasses import dataclass as _dataclass
 from enum import IntEnum as _IntEnum
 from enum import StrEnum as _StrEnum
@@ -55,9 +56,9 @@ if USING_SHM_LOCK and SHM_HEADER_SIZE >= 16:
             This means that the subsequent `monotonic_ns` value will always increase.
         """
         return (
-            secrets.token_bytes(SHM_HEADER_SIZE - 6)  # >= 80 bits random
+            os.urandom(SHM_HEADER_SIZE - 6)  # >= 80 bits random
             +
-            (time.monotonic_ns() & 0xffffffffffff).to_bytes(
+            (time.monotonic_ns() & 0xffff_ffff_ffff).to_bytes(
                 6, 'little')  # 48 bits timestamp (> 3 days > engine request timeout)
         )
 
@@ -65,13 +66,14 @@ else:
     def generate_shm_nonce():
         """like uuid4
             """
-        return secrets.token_bytes(SHM_HEADER_SIZE)
+        return os.urandom(SHM_HEADER_SIZE)
 
 
 def generate_filestem():
     """like uuid4
     """
-    return secrets.token_urlsafe(16)
+    tok = os.urandom(16)
+    return base64.urlsafe_b64encode(tok).rstrip(b'=').decode('ascii')
 
 
 __all__ = [
