@@ -3,8 +3,8 @@ All constants, schemas, common functools for both engine worker(s) and web appli
 '''
 
 
-import os
-import base64
+import os as _os
+import base64 as _base64
 from dataclasses import dataclass as _dataclass
 from enum import IntEnum as _IntEnum
 from enum import StrEnum as _StrEnum
@@ -48,7 +48,7 @@ class ShmTensorSchema:
 del _dataclass, _IntEnum, _StrEnum
 
 if USING_SHM_LOCK and SHM_HEADER_SIZE >= 16:
-    import time
+    import time as _time
 
     def generate_shm_nonce():
         """This function is called within a lock block.
@@ -56,9 +56,9 @@ if USING_SHM_LOCK and SHM_HEADER_SIZE >= 16:
             This means that the subsequent `monotonic_ns` value will always increase.
         """
         return (
-            os.urandom(SHM_HEADER_SIZE - 6)  # >= 80 bits random
+            _os.urandom(SHM_HEADER_SIZE - 6)  # >= 80 bits random
             +
-            (time.monotonic_ns() & 0xffff_ffff_ffff).to_bytes(
+            (_time.monotonic_ns() & 0xffff_ffff_ffff).to_bytes(
                 6, 'little')  # 48 bits timestamp (> 3 days > engine request timeout)
         )
 
@@ -66,14 +66,14 @@ else:
     def generate_shm_nonce():
         """like uuid4
             """
-        return os.urandom(SHM_HEADER_SIZE)
+        return _os.urandom(SHM_HEADER_SIZE)
 
 
 def generate_filestem():
     """like uuid4
     """
-    tok = os.urandom(16)
-    return base64.urlsafe_b64encode(tok).rstrip(b'=').decode('ascii')
+    tok = _os.urandom(16)
+    return _base64.urlsafe_b64encode(tok).rstrip(b'=').decode('ascii')
 
 
 __all__ = [
